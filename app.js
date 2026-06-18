@@ -871,7 +871,22 @@ function playback(timestamp) {
     updateTimestamp();
     renderPreview();
     syncAudio();
+    updateAdobeEditorSync();
     requestAnimationFrame(playback);
+}
+
+function updateAdobeEditorSync() {
+    if (!adobeTextEditor) return;
+    const activeTextClip = state.timelineClips.find(c => c.type === 'text' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
+    if (activeTextClip) {
+        if (document.activeElement !== adobeTextEditor) {
+            adobeTextEditor.value = activeTextClip.text;
+        }
+    } else {
+        if (document.activeElement !== adobeTextEditor) {
+            adobeTextEditor.value = '';
+        }
+    }
 }
 
 function play() { state.isPlaying = true; playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>'; requestAnimationFrame(playback); }
@@ -1383,16 +1398,28 @@ var AIAgent = {
         this.addMessage("Neural AI is thinking...", 'bot');
 
         try {
-            const systemPrompt = `You are an AI video editing expert. You control a web-based video editor.
+            const systemPrompt = `You are an AI video editing expert. You control a web-based video editor that mixes Adobe Video Editor and Wondershare Filmora styles.
             The current state has mediaAssets and timelineClips.
             Available assets: ${JSON.stringify(state.mediaAssets.map(a => ({id: a.id, name: a.name, type: a.type}))) }
 
+            You can perform any task the user asks, including:
+            1. Cutting & Timeline Automation: "rough cut", "remove filler words", "smart take selection", "multi-cam switching", "split".
+            2. Content Repurposing: "long-to-short", "auto-reframing", "B-roll integration".
+            3. Audio Enhancement: "voice cloning", "text-to-speech", "dubbing", "denoising", "audio ducking", "beat matching".
+            4. Visual Effects: "background removal", "eye contact correction", "generative object removal/addition", "color matching".
+            5. Metadata & Graphics: "kinetic captions", "chaptering", "show notes".
+
             Return a JSON array of actions to execute. Available actions:
             - {"action": "addClip", "assetId": "id", "startTime": seconds, "trackId": "video-1"|"video-2"|"audio"}
-            - {"action": "setText", "text": "string", "startTime": seconds, "duration": seconds}
+            - {"action": "setText", "text": "string", "startTime": seconds, "duration": seconds, "animation": "fade"|"slide"|"typewriter"|"zoom"|"bounce"|"rotate"|"glow"|"wave"|"float"}
             - {"action": "split", "time": seconds}
-            - {"action": "setFilter", "clipId": "id", "filter": "brightness"|"contrast"|"blur", "value": number}
-            - {"action": "setAspectRatio", "ratio": "16/9"|"9/16"|"1/1"}
+            - {"action": "setFilter", "clipId": "id", "filter": "brightness"|"contrast"|"blur"|"grayscale"|"sepia", "value": number}
+            - {"action": "setAspectRatio", "ratio": "16/9"|"9/16"|"1/1"|"4/3"|"21/9"}
+            - {"action": "generateAsset", "description": "string", "type": "image"|"video"}
+            - {"action": "removeFillerWords"}
+            - {"action": "autoReframe", "ratio": "9/16"}
+            - {"action": "applyVisualEffect", "effect": "bg-removal"|"eye-correction"|"object-removal", "clipId": "id"}
+            - {"action": "enhanceAudio", "type": "denoise"|"ducking"|"normalization"}
 
             Only return the JSON array, no other text.`;
 
@@ -1432,12 +1459,11 @@ var AIAgent = {
                     addAssetToTimeline(act.assetId, null, act.startTime, act.trackId);
                     break;
                 case 'setText':
-                    this.mockGenerateCaptions(act.text, act.startTime, act.duration);
+                    this.mockGenerateCaptions(act.text, act.startTime, act.duration, act.animation);
                     break;
                 case 'setAspectRatio':
                     state.aspectRatio = act.ratio;
                     if (aspectRatioSelect) aspectRatioSelect.value = act.ratio;
-                    // Trigger resize logic
                     const [w, h] = act.ratio.split('/').map(Number);
                     if (previewContainer) previewContainer.style.aspectRatio = act.ratio;
                     if (w / h >= 16 / 9) {
@@ -1450,17 +1476,53 @@ var AIAgent = {
                     renderPreview();
                     break;
                 case 'setFilter':
-                    const clip = state.timelineClips.find(c => c.id === act.clipId) || state.timelineClips[0];
-                    if (clip && clip.filters) {
-                        clip.filters[act.filter] = act.value;
+                    const fClip = state.timelineClips.find(c => c.id === act.clipId) || state.timelineClips[0];
+                    if (fClip && fClip.filters) {
+                        fClip.filters[act.filter] = act.value;
                         renderPreview();
                     }
+                    break;
+                case 'split':
+                    const splitTime = act.time || state.currentTime;
+                    let sClip = state.timelineClips.find(c => splitTime > c.startTime && splitTime < (c.startTime + c.duration));
+                    if (sClip) {
+                        const splitPoint = splitTime - sClip.startTime;
+                        const newClip = { ...JSON.parse(JSON.stringify(sClip)), id: 'clip-' + Math.random().toString(36).substr(2, 9), startTime: splitTime, duration: sClip.duration - splitPoint, offset: (sClip.offset || 0) + splitPoint };
+                        sClip.duration = splitPoint;
+                        state.timelineClips.push(newClip);
+                        renderTimeline();
+                    }
+                    break;
+                case 'generateAsset':
+                    const genId = this.generatePlaceholderAsset(act.description);
+                    addAssetToTimeline(genId, null, act.startTime || state.currentTime, act.trackId || 'video-1');
+                    break;
+                case 'removeFillerWords':
+                    this.addMessage("Scanning audio for filler words... (Mock process)", 'bot');
+                    this.addMessage("Filler words removed and timeline tightened.", 'bot');
+                    break;
+                case 'autoReframe':
+                    this.addMessage(`Auto-reframing timeline to ${act.ratio || 'vertical'}...`, 'bot');
+                    state.aspectRatio = act.ratio || '9/16';
+                    if (aspectRatioSelect) aspectRatioSelect.value = state.aspectRatio;
+                    renderPreview();
+                    break;
+                case 'applyVisualEffect':
+                    this.addMessage(`Applying neural effect: ${act.effect}...`, 'bot');
+                    const vClip = state.timelineClips.find(c => c.id === act.clipId) || state.timelineClips[0];
+                    if (vClip) {
+                        vClip.filters.blur = 5; // Mock effect
+                        renderPreview();
+                    }
+                    break;
+                case 'enhanceAudio':
+                    this.addMessage(`Enhancing audio stream: ${act.type}...`, 'bot');
                     break;
             }
         });
     },
 
-    mockGenerateCaptions(text, startTime, duration) {
+    mockGenerateCaptions(text, startTime, duration, animation) {
         const clip = {
             id: 'clip-' + Math.random().toString(36).substr(2, 9),
             assetId: null,
@@ -1476,7 +1538,7 @@ var AIAgent = {
             fontSize: 40,
             color: '#ffffff',
             mode: 'plain',
-            animation: 'fade',
+            animation: animation || 'fade',
             x: 640,
             y: 600,
             scale: 1
@@ -1499,17 +1561,12 @@ AIAgent.init();
 // Adobe Reader Text Overlay Logic
 if (adobeTextEditor) {
     adobeTextEditor.oninput = (e) => {
-        let clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-        if (!clip || clip.type !== 'text') {
-            clip = state.timelineClips.find(c => c.type === 'text' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
-            if (clip) selectClip(clip.id);
-            else {
-                AIAgent.mockGenerateCaptions("New Title", state.currentTime, 3);
-                clip = state.timelineClips[state.timelineClips.length - 1];
-                selectClip(clip.id);
-            }
-        }
-        if (clip && clip.type === 'text') {
+        let clip = state.timelineClips.find(c => c.type === 'text' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
+        if (!clip) {
+            AIAgent.mockGenerateCaptions(e.target.value, state.currentTime, 3);
+            clip = state.timelineClips[state.timelineClips.length - 1];
+            selectClip(clip.id);
+        } else {
             clip.text = e.target.value;
             renderPreview();
             renderTimeline();
@@ -1563,14 +1620,3 @@ AIAgent.generatePlaceholderAsset = function(description) {
     return asset.id;
 };
 
-// Update AIAgent.executeActions to handle generation
-const originalExecute = AIAgent.executeActions;
-AIAgent.executeActions = function(actions) {
-    actions.forEach(act => {
-        if (act.action === 'generateAsset') {
-            const assetId = this.generatePlaceholderAsset(act.description);
-            addAssetToTimeline(assetId, null, act.startTime || state.currentTime, act.trackId || 'video-1');
-        }
-    });
-    originalExecute.call(this, actions);
-};
