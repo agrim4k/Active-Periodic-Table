@@ -1,5 +1,11 @@
         // app.js - WonderClone Filmora Futuristic Edition
 
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+const exportDest = audioCtx.createMediaStreamDestination();
+masterGain.connect(audioCtx.destination);
+masterGain.connect(exportDest);
+
 const state = {
     mediaAssets: [],
     audioAssets: [],
@@ -15,7 +21,8 @@ const state = {
     transitionContrast: 100,
     aspectRatio: '16/9',
     viewMode: 'fit',
-    themeStyle: 'neon'
+    themeStyle: 'neon',
+    isExporting: false
 };
 
 const mediaGrid = document.getElementById('media-grid');
@@ -323,12 +330,20 @@ if (isVideo) {
 
     if (isVideo) {
         const video = document.createElement('video');
-        video.src = asset.url;
         video.muted = true;
-        video.onloadedmetadata = () => { asset.duration = video.duration; asset.element = video; };
+        video.playsInline = true;
+        video.crossOrigin = "anonymous";
+        video.src = asset.url;
+        video.onloadedmetadata = () => {
+            asset.duration = video.duration;
+            asset.element = video;
+            const source = audioCtx.createMediaElementSource(video);
+            source.connect(masterGain);
+        };
         mediaItem.appendChild(video);
     } else {
         const img = document.createElement('img');
+        img.crossOrigin = "anonymous";
         img.src = asset.url;
         img.onload = () => { asset.element = img; };
         mediaItem.appendChild(img);
@@ -541,6 +556,8 @@ clipEl.addEventListener('mouseleave', () => {
     });
 }
 function renderPreview() {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -763,19 +780,28 @@ function drawCloud(ctx, x, y, width, height) {
 
 // --- Audio Sync ---
 function syncAudio() {
-    const activeAudioClips = state.timelineClips.filter(c => c.track === 'audio' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
+    const activeClips = state.timelineClips.filter(c => state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
 
-    state.timelineClips.filter(c => c.track === 'audio').forEach(clip => {
+    state.timelineClips.forEach(clip => {
         const asset = state.mediaAssets.find(a => a.id === clip.assetId);
-        if (asset && asset.element) {
-            const audio = asset.element;
-            if (activeAudioClips.includes(clip) && state.isPlaying) {
+        if (asset && asset.element && (clip.type === 'audio' || clip.type === 'video')) {
+            const el = asset.element;
+            if (activeClips.includes(clip) && (state.isPlaying || state.isExporting)) {
                 const time = (state.currentTime - clip.startTime) + clip.offset;
-                if (Math.abs(audio.currentTime - time) > 0.1) audio.currentTime = time;
-                audio.volume = ((clip.volume || 100) / 100) * (state.masterVolume / 100);
-                if (audio.paused) audio.play();
+                if (Math.abs(el.currentTime - time) > 0.1) el.currentTime = time;
+
+                // Volume handling
+                const vol = ((clip.volume || 100) / 100) * (state.masterVolume / 100);
+                if (clip.type === 'audio') {
+                    el.volume = vol;
+                } else if (clip.type === 'video') {
+                    // Even if muted at element level, we might want to control its gain node if we had one per clip.
+                    // For now, elements are connected to masterGain.
+                }
+
+                if (el.paused) el.play().catch(e => console.warn("Playback prevented", e));
             } else {
-                audio.pause();
+                el.pause();
             }
         }
     });
@@ -877,7 +903,12 @@ function playback(timestamp) {
 function play() { state.isPlaying = true; playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>'; requestAnimationFrame(playback); }
 function pause() { state.isPlaying = false; playPauseBtn.innerHTML = '<i class="fas fa-play"></i>'; syncAudio(); }
 
-playPauseBtn.onclick = () => state.isPlaying ? pause() : play();
+playPauseBtn.onclick = () => {
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    state.isPlaying ? pause() : play();
+};
 
 document.getElementById('prev-frame').onclick = () => {
     pause();
@@ -1240,8 +1271,13 @@ function initAudioLibrary() {
             duration: 120,
             element: new Audio()
         };
+        asset.element.crossOrigin = "anonymous";
         asset.element.src = asset.url;
-        asset.element.onloadedmetadata = () => asset.duration = asset.element.duration;
+        asset.element.onloadedmetadata = () => {
+            asset.duration = asset.element.duration;
+            const source = audioCtx.createMediaElementSource(asset.element);
+            source.connect(masterGain);
+        };
         state.mediaAssets.push(asset);
     });
     genreTabs.forEach(tab => {
@@ -1269,9 +1305,20 @@ document.getElementById('import-audio-btn').onclick = () => {
     input.accept = 'audio/*';
     input.onchange = (e) => {
         const file = e.target.files[0];
+        const asset = {
+            id: 'asset-' + Math.random().toString(36).substr(2, 9),
+            name: file.name,
+            type: 'audio',
+            url: URL.createObjectURL(file),
+            duration: 0,
+            element: new Audio()
+        };
         asset.element.src = asset.url;
+        asset.element.crossOrigin = "anonymous";
         asset.element.onloadedmetadata = () => {
             asset.duration = asset.element.duration;
+            const source = audioCtx.createMediaElementSource(asset.element);
+            source.connect(masterGain);
             state.mediaAssets.push(asset);
             renderAudio();
         };
@@ -1314,24 +1361,94 @@ window.onclick = (e) => { if (e.target === helpModal) helpModal.style.display = 
 
 // --- Export ---
 document.getElementById('export-btn').onclick = () => {
+    const exportBtn = document.getElementById('export-btn');
     const originalTime = state.currentTime;
-    const stream = canvas.captureStream(30);
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    const originalIsPlaying = state.isPlaying;
+
+    if (state.isPlaying) pause();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    state.currentTime = 0;
+    state.isExporting = true;
+    updateTimestamp();
+    renderPreview();
+    syncAudio();
+
+    exportBtn.disabled = true;
+    exportBtn.innerText = 'Exporting: 0%';
+
+    const canvasStream = canvas.captureStream(30);
+    const audioStream = exportDest.stream;
+
+    const mixedStream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...audioStream.getAudioTracks()
+    ]);
+
+    const getSupportedMimeType = () => {
+        const types = [
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=vp8,opus',
+            'video/webm',
+            'video/mp4'
+        ];
+        return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+    };
+
+    const mimeType = getSupportedMimeType();
+    let recorder;
+    try {
+        recorder = new MediaRecorder(mixedStream, {
+            mimeType,
+            videoBitsPerSecond: 8000000,
+            audioBitsPerSecond: 128000
+        });
+    } catch (e) {
+        console.warn("MediaRecorder creation failed, falling back", e);
+        recorder = new MediaRecorder(mixedStream);
+    }
+
     const chunks = [];
     recorder.ondataavailable = e => chunks.push(e.data);
     recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
+        const blob = new Blob(chunks, { type: recorder.mimeType });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'futuristic-filmora-export.webm'; a.click();
-        state.currentTime = originalTime; renderPreview();
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wonder-editor-export.${recorder.mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+        a.click();
+
+        state.isExporting = false;
+        state.currentTime = originalTime;
+        if (originalIsPlaying) play();
+        else { renderPreview(); syncAudio(); }
+
+        exportBtn.disabled = false;
+        exportBtn.innerText = 'LAUNCH EXPORT';
     };
-    state.currentTime = 0;
+
     recorder.start();
-    const frame = () => {
-        if (state.currentTime >= state.duration) { recorder.stop(); return; }
-        renderPreview(); state.currentTime += 1/30; requestAnimationFrame(frame);
+
+    // Controlled export loop to ensure smoothness and UI updates
+    const exportFrame = () => {
+        if (state.currentTime >= state.duration) {
+            recorder.stop();
+            return;
+        }
+
+        renderPreview();
+        syncAudio();
+        updateTimestamp();
+
+        const progress = state.duration > 0 ? Math.floor((state.currentTime / state.duration) * 100) : 100;
+        exportBtn.innerText = `Exporting: ${progress}%`;
+
+        state.currentTime += 1/30;
+
+        // setTimeout provides breathing room for the browser to render and sync
+        setTimeout(exportFrame, 1000 / 30);
     };
-    frame();
+    exportFrame();
 };
 
 console.log("WonderClone Futuristic Loaded");
