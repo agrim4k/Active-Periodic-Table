@@ -459,7 +459,7 @@ function renderTimeline() {
     state.timelineClips.forEach(clip => {
         const asset = state.mediaAssets.find(a => a.id === clip.assetId);
         const clipEl = document.createElement('div');
-        clipEl.className = 'clip';
+        clipEl.className = `clip ${clip.type}-clip`;
         clipEl.addEventListener('mouseenter', () => {
 
     clipEl.style.boxShadow =
