@@ -41,15 +41,15 @@
             <div id="media-library" class="library-container">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
-                    <input type="text" id="search-media" placeholder="Search neural assets...">
+                    <input type="text" id="search-media" placeholder="Search media assets...">
                 </div>
-                <div class="empty-msg">Drop neural assets or Import</div>
+                <div class="empty-msg">Drop media assets or Import</div>
                 <div class="media-grid" id="media-grid"></div>
             </div>
 
             <!-- Titles Panel (Hidden by default) -->
             <div id="titles-panel" class="library-container" style="display: none;">
-                <h3>Neural Titles</h3>
+                <h3>Adobe Premiere Titles</h3>
                 <div class="input-group">
                     <label>Overlay Text</label>
                     <input type="text" id="title-text" placeholder="Enter text...">
@@ -85,7 +85,7 @@
 <option value="float">Float</option>
 <option value="glitch">Glitch</option>
 <option value="neon">Neon Flicker</option>
-<option value="shake">Neural Shake</option>
+<option value="shake">Adobe Premiere Shake</option>
 <option value="3d">3D Perspective</option>
 <option value="rainbow">Rainbow Pulse</option>
                     </select>
@@ -157,18 +157,34 @@
         </section>
 
         <section class="preview-panel">
-            <div class="preview-main">
-                <div class="preview-container" id="main-preview-container">
-                    <div id="adobe-text-overlay">
-                        <input type="text" id="adobe-text-editor" placeholder="Adobe Reader: Edit Preview Text..." spellcheck="false">
+            <div class="preview-main source-monitor-active">
+                <div class="monitor-group">
+                    <div class="monitor">
+                        <div class="monitor-header">Source Monitor</div>
+                        <div class="preview-container source-container">
+                            <video id="source-video" muted></video>
+                            <img id="source-img" style="display: none;">
+                        </div>
+                        <div class="preview-controls">
+                            <button id="source-play"><i class="fas fa-play"></i></button>
+                            <button id="insert-btn" title="Insert to Timeline"><i class="fas fa-level-down-alt"></i></button>
+                        </div>
                     </div>
-                    <canvas id="preview-canvas"></canvas>
-                </div>
-                <div class="preview-controls">
-                    <button id="prev-frame"><i class="fas fa-chevron-left"></i></button>
-                    <button id="play-pause"><i class="fas fa-play"></i></button>
-                    <button id="next-frame"><i class="fas fa-chevron-right"></i></button>
-                    <span id="timestamp">00:00:00:00 / 00:00:00:00</span>
+                    <div class="monitor">
+                        <div class="monitor-header">Program Monitor</div>
+                        <div class="preview-container" id="main-preview-container">
+                            <div id="adobe-text-overlay">
+                                <input type="text" id="adobe-text-editor" placeholder="Adobe Premiere: Edit Preview Text..." spellcheck="false">
+                            </div>
+                            <canvas id="preview-canvas"></canvas>
+                        </div>
+                        <div class="preview-controls">
+                            <button id="prev-frame"><i class="fas fa-chevron-left"></i></button>
+                            <button id="play-pause"><i class="fas fa-play"></i></button>
+                            <button id="next-frame"><i class="fas fa-chevron-right"></i></button>
+                            <span id="timestamp">00:00:00:00 / 00:00:00:00</span>
+                        </div>
+                    </div>
                 </div>
             </div>
             <aside class="preview-side-controls glass">
@@ -241,8 +257,10 @@
     <footer class="timeline-area glass">
         <div class="timeline-toolbar">
             <div class="tool-group">
-                <button id="split-btn" title="Split Atom"><i class="fas fa-cut"></i></button>
-                <button id="delete-btn" title="De-materialize"><i class="fas fa-trash-alt"></i></button>
+                <button id="select-tool" class="active" title="Selection Tool (V)"><i class="fas fa-mouse-pointer"></i></button>
+                <button id="razor-tool" title="Razor Tool (C)"><i class="fas fa-cut"></i></button>
+                <button id="split-btn" title="Split at Playhead"><i class="fas fa-divide"></i></button>
+                <button id="delete-btn" title="Delete Selected Clip"><i class="fas fa-trash-alt"></i></button>
             </div>
             <div class="zoom-controls">
                 <i class="fas fa-minus-circle" id="zoom-out-btn" style="cursor: pointer;"></i>
@@ -263,7 +281,7 @@
 
     <div id="help-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content glass">
-            <h2>Neural Editor Manual</h2>
+            <h2>Adobe Premiere Editor Manual</h2>
             <div class="manual-section">
                 <h3><i class="fas fa-plus"></i> Import</h3>
                 <p>Use the <strong>Import</strong> button to add videos or images. Use <strong>Audio -> Import Custom</strong> for music.</p>
@@ -274,11 +292,11 @@
             </div>
             <div class="manual-section">
                 <h3><i class="fas fa-magic"></i> Effects</h3>
-                <p>Select a clip, go to the <strong>Effects</strong> tab, and click an FX card to apply neural transforms (Zoom In/Out) or filters.</p>
+                <p>Select a clip, go to the <strong>Effects</strong> tab, and click an FX card to apply video transforms (Zoom In/Out) or filters.</p>
             </div>
             <div class="manual-section">
                 <h3><i class="fas fa-rocket"></i> Export</h3>
-                <p>Click <strong>Launch Export</strong> to render your composition into a WebM neural stream.</p>
+                <p>Click <strong>Launch Export</strong> to render your composition into a WebM video stream.</p>
             </div>
             <button id="close-help" class="primary-btn" style="width: 100%; margin-top: 20px;">Return to Bridge</button>
         </div>
@@ -291,11 +309,11 @@
 
     <div id="ai-panel" class="glass" style="display: none;">
         <div class="ai-header">
-            <span><i class="fas fa-brain"></i> Neural AI Agent</span>
+            <span><i class="fas fa-brain"></i> Adobe Premiere AI Agent</span>
             <button id="close-ai"><i class="fas fa-times"></i></button>
         </div>
         <div id="ai-chat-history">
-            <div class="ai-msg bot">Greetings. I am your Neural Editing Assistant. How can I transform your timeline today?</div>
+            <div class="ai-msg bot">Greetings. I am your Adobe Premiere Editing Assistant. How can I transform your timeline today?</div>
         </div>
         <div class="ai-input-area">
             <input type="text" id="ai-command-input" placeholder="Ask AI to do anything...">

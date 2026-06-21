@@ -222,6 +222,39 @@ tabs.forEach(tab => {
     };
 });
 
+// --- Source Monitor ---
+const sourceVideo = document.getElementById('source-video');
+const sourceImg = document.getElementById('source-img');
+let currentSourceAssetId = null;
+
+function loadToSourceMonitor(assetId) {
+    const asset = state.mediaAssets.find(a => a.id === assetId);
+    if (!asset) return;
+    currentSourceAssetId = assetId;
+    if (asset.type === 'video') {
+        sourceVideo.src = asset.url;
+        sourceVideo.style.display = 'block';
+        sourceImg.style.display = 'none';
+    } else {
+        sourceImg.src = asset.url;
+        sourceImg.style.display = 'block';
+        sourceVideo.style.display = 'none';
+    }
+}
+
+if (document.getElementById('source-play')) {
+    document.getElementById('source-play').onclick = () => {
+        if (sourceVideo.paused) sourceVideo.play();
+        else sourceVideo.pause();
+    };
+}
+
+if (document.getElementById('insert-btn')) {
+    document.getElementById('insert-btn').onclick = () => {
+        if (currentSourceAssetId) addAssetToTimeline(currentSourceAssetId);
+    };
+}
+
 // --- Preview Side Controls ---
 playerModelSelect.onchange = (e) => {
     const model = e.target.value;
@@ -334,16 +367,20 @@ if (isVideo) {
         const video = document.createElement('video');
         video.src = asset.url;
         video.muted = true;
+        video.crossOrigin = 'anonymous';
+        video.playsInline = true;
         video.onloadedmetadata = () => { asset.duration = video.duration; asset.element = video; };
         mediaItem.appendChild(video);
     } else {
         const img = document.createElement('img');
         img.src = asset.url;
+        img.crossOrigin = 'anonymous';
         img.onload = () => { asset.element = img; };
         mediaItem.appendChild(img);
     }
 
     mediaItem.addEventListener('dragstart', (e) => e.dataTransfer.setData('assetId', asset.id));
+    mediaItem.onclick = () => loadToSourceMonitor(asset.id);
     mediaItem.addEventListener('dblclick', () => addAssetToTimeline(asset.id));
 
     mediaGrid.appendChild(mediaItem);
@@ -609,7 +646,12 @@ function renderPreview() {
 
                 ctx.save();
                 ctx.translate(cw/2 + (clip.x || 0), ch/2 + (clip.y || 0));
-                ctx.scale(clip.scale || 1, clip.scale || 1);
+                let currentScale = clip.scale || 1;
+                if (clip.type === 'image') {
+                    const elapsed = state.currentTime - clip.startTime;
+                    currentScale *= (1 + (elapsed * 0.05)); // Ken Burns zoom
+                }
+                ctx.scale(currentScale, currentScale);
                 ctx.translate(-cw/2, -ch/2);
                 ctx.drawImage(element, dx, dy, dw, dh);
                 ctx.restore();
@@ -997,7 +1039,12 @@ timeline.onmousedown = (e) => {
 
     const scrub = (moveEvent) => {
         const x = moveEvent.clientX - rect.left + timeline.parentElement.scrollLeft;
-        seekToX(x);
+        if (currentTool === 'razor') {
+            const time = x / state.zoomLevel;
+            splitAtTime(time);
+        } else {
+            seekToX(x);
+        }
     };
 
     const stopScrub = () => {
@@ -1006,7 +1053,12 @@ timeline.onmousedown = (e) => {
     };
 
     const x = e.clientX - rect.left + timeline.parentElement.scrollLeft;
-    seekToX(x);
+    if (currentTool === 'razor') {
+        const time = x / state.zoomLevel;
+        splitAtTime(time);
+    } else {
+        seekToX(x);
+    }
 
     document.addEventListener('mousemove', scrub);
     document.addEventListener('mouseup', stopScrub);
@@ -1080,7 +1132,31 @@ function applyTemplate(id) {
             const cyber = state.mediaAssets.find(a => a.genre === 'Cyberpunk');
             if(cyber) addAssetToTimeline(cyber.id, null, 0, 'audio');
             break;
-        // Add more template logic as needed
+        case 'news':
+            state.timelineClips.forEach(c => { if(c.type === 'video') { c.filters.contrast = 110; c.scale = 1.05; } });
+            AIAgent.mockGenerateCaptions("BREAKING NEWS", state.currentTime, 5);
+            break;
+        case 'minimal':
+            state.timelineClips.forEach(c => { if(c.type === 'video') { c.filters.brightness = 105; c.filters.contrast = 95; } });
+            state.transitionSpeed = 1.5;
+            break;
+        case 'retro':
+            state.timelineClips.forEach(c => { if(c.type === 'video') { c.filters.sepia = 50; c.filters.blur = 1; } });
+            const synth = state.mediaAssets.find(a => a.genre === 'Synthwave');
+            if(synth) addAssetToTimeline(synth.id, null, 0, 'audio');
+            break;
+        case 'gaming':
+            state.timelineClips.forEach(c => { if(c.type === 'video') { c.filters.brightness = 120; c.animation = 'glitch'; } });
+            break;
+        case 'travel':
+            state.timelineClips.forEach(c => { if(c.type === 'video') { c.filters.brightness = 110; c.filters.sepia = 10; } });
+            state.transitionSpeed = 2.0;
+            const nature = state.mediaAssets.find(a => a.genre === 'Lofi');
+            if(nature) addAssetToTimeline(nature.id, null, 0, 'audio');
+            break;
+        case 'doc':
+            state.timelineClips.forEach(c => { if(c.type === 'video') { c.filters.grayscale = 20; c.filters.contrast = 110; } });
+            break;
     }
     renderPreview();
     renderTimeline();
@@ -1089,7 +1165,7 @@ function applyTemplate(id) {
 // --- Effects Panel ---
 let effectsPanel = null;
 const effectsLibrary = [
-    { id: 'vintage', name: 'Vintage Neural', icon: 'fa-history', type: 'filter', filters: { sepia: 80, contrast: 120 } },
+    { id: 'vintage', name: 'Vintage Adobe Premiere', icon: 'fa-history', type: 'filter', filters: { sepia: 80, contrast: 120 } },
     { id: 'cyber', name: 'Cyber Neon', icon: 'fa-bolt', type: 'filter', filters: { brightness: 150, contrast: 150, blur: 2 } },
     { id: 'noir', name: 'Noir Protocol', icon: 'fa-moon', type: 'filter', filters: { grayscale: 100, contrast: 140 } }
 ];
@@ -1097,7 +1173,7 @@ const effectsLibrary = [
 for(let i=1; i<=100; i++) {
     effectsLibrary.push({
         id: `fx-${i}`,
-        name: `Neural Filter ${i}`,
+        name: `Adobe Premiere Filter ${i}`,
         icon: 'fa-magic',
         type: 'filter',
         filters: { brightness: 100 + (Math.random()*40-20), contrast: 100 + (Math.random()*40-20) }
@@ -1109,10 +1185,10 @@ function showEffects() {
         effectsPanel = document.createElement('div');
         effectsPanel.className = 'library-container glass';
         effectsPanel.innerHTML = `
-            <h3>Neural FX</h3>
+            <h3>Adobe Premiere FX</h3>
             <div class="search-box">
                 <i class="fas fa-search"></i>
-                <input type="text" id="search-effects" placeholder="Search neural FX...">
+                <input type="text" id="search-effects" placeholder="Search video FX...">
             </div>
             <div class="effects-grid" id="effects-grid"></div>
             <hr style="margin: 20px 0; opacity: 0.1;">
@@ -1233,7 +1309,7 @@ function updateTitleInputs(clip) {
 
 // --- Transitions Module ---
 const transitionsLibrary = [
-    { id: 'trans-1', name: 'Neural Fade', icon: 'fa-adjust' },
+    { id: 'trans-1', name: 'Adobe Premiere Fade', icon: 'fa-adjust' },
     { id: 'trans-2', name: 'Quantum Leap', icon: 'fa-bolt' },
     { id: 'trans-3', name: 'Plasma Dissolve', icon: 'fa-tint' },
     { id: 'trans-4', name: 'Static Glitch', icon: 'fa-microchip' },
@@ -1246,7 +1322,7 @@ const transitionsLibrary = [
 for(let i=9; i<=100; i++) {
     transitionsLibrary.push({
         id: `trans-${i}`,
-        name: `Neural Transition ${i}`,
+        name: `Adobe Premiere Transition ${i}`,
         icon: 'fa-random'
     });
 }
@@ -1318,7 +1394,7 @@ document.getElementById('search-audio').oninput = (e) => {
 const genres = ["Cyberpunk", "Synthwave", "Lofi", "Cinematic"];
 const audioStreams = [
     { name: "Glitch Matrix", genre: "Cyberpunk", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
-    { name: "Neural Override", genre: "Cyberpunk", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
+    { name: "Adobe Premiere Override", genre: "Cyberpunk", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
     { name: "Neon Drifter", genre: "Synthwave", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
     { name: "Plasma Sunset", genre: "Synthwave", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" },
     { name: "Static Chill", genre: "Lofi", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3" },
@@ -1329,7 +1405,7 @@ const audioStreams = [
 
 for(let i=1; i<=100; i++) {
     audioStreams.push({
-        name: `Neural Track ${i}`,
+        name: `Adobe Premiere Track ${i}`,
         genre: genres[Math.floor(Math.random() * genres.length)]
     });
 }
@@ -1415,17 +1491,42 @@ document.getElementById('import-audio-btn').onclick = () => {
 };
 
 // --- Tool Buttons ---
+let currentTool = 'select';
+const selectToolBtn = document.getElementById('select-tool');
+const razorToolBtn = document.getElementById('razor-tool');
+
+if (selectToolBtn) {
+    selectToolBtn.onclick = () => {
+        currentTool = 'select';
+        selectToolBtn.classList.add('active');
+        razorToolBtn.classList.remove('active');
+        timeline.style.cursor = 'default';
+    };
+}
+
+if (razorToolBtn) {
+    razorToolBtn.onclick = () => {
+        currentTool = 'razor';
+        razorToolBtn.classList.add('active');
+        selectToolBtn.classList.remove('active');
+        timeline.style.cursor = 'crosshair';
+    };
+}
+
 document.getElementById('split-btn').onclick = () => {
-    let clip = state.timelineClips.find(c => c.id === state.selectedClipId && state.currentTime > c.startTime && state.currentTime < (c.startTime + c.duration));
-    if (!clip) clip = state.timelineClips.find(c => state.currentTime > c.startTime && state.currentTime < (c.startTime + c.duration));
-    if (clip) {
-        const splitPoint = state.currentTime - clip.startTime;
-        const newClip = { ...JSON.parse(JSON.stringify(clip)), id: 'clip-' + Math.random().toString(36).substr(2, 9), startTime: state.currentTime, duration: clip.duration - splitPoint, offset: (clip.offset || 0) + splitPoint };
+    splitAtTime(state.currentTime);
+};
+
+function splitAtTime(time) {
+    const clipsToSplit = state.timelineClips.filter(c => time > c.startTime && time < (c.startTime + c.duration));
+    clipsToSplit.forEach(clip => {
+        const splitPoint = time - clip.startTime;
+        const newClip = { ...JSON.parse(JSON.stringify(clip)), id: 'clip-' + Math.random().toString(36).substr(2, 9), startTime: time, duration: clip.duration - splitPoint, offset: (clip.offset || 0) + splitPoint };
         clip.duration = splitPoint;
         state.timelineClips.push(newClip);
-        renderTimeline();
-    }
-};
+    });
+    if (clipsToSplit.length > 0) renderTimeline();
+}
 
 document.getElementById('delete-btn').onclick = () => {
     if (state.selectedClipId) {
@@ -1450,8 +1551,15 @@ window.onclick = (e) => { if (e.target === helpModal) helpModal.style.display = 
 // --- Export ---
 document.getElementById('export-btn').onclick = () => {
     const originalTime = state.currentTime;
-    const stream = canvas.captureStream(30);
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    const canvasStream = canvas.captureStream(30);
+    const audioStream = exportDest.stream;
+
+    const combinedStream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...audioStream.getAudioTracks()
+    ]);
+
+    const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
     const chunks = [];
     recorder.ondataavailable = e => chunks.push(e.data);
     recorder.onstop = () => {
@@ -1515,7 +1623,7 @@ var AIAgent = {
     },
 
     async processCommand(userPrompt) {
-        this.addMessage("Neural AI is thinking...", 'bot');
+        this.addMessage("Adobe Premiere AI is thinking...", 'bot');
 
         try {
             const systemPrompt = `You are an AI video editing expert. You control a web-based video editor.
@@ -1554,17 +1662,17 @@ var AIAgent = {
             const actions = JSON.parse(content);
 
             this.executeActions(actions);
-            this.addMessage("Neural transformations applied successfully.", 'bot');
+            this.addMessage("Adobe Premiere transformations applied successfully.", 'bot');
         } catch (error) {
             console.error("AI Error:", error);
-            this.addMessage("Neural link disrupted. Attempting fallback...", 'bot');
+            this.addMessage("Adobe Premiere link disrupted. Attempting fallback...", 'bot');
             // Fallback to keyword-based if API fails or returns non-JSON
             this.fallbackProcess(userPrompt.toLowerCase());
         }
     },
 
     async generateTTS(text) {
-        this.addMessage("Generating neural speech...", 'bot');
+        this.addMessage("Generating AI speech...", 'bot');
         try {
             const response = await fetch('https://api.openai.com/v1/audio/speech', {
                 method: 'POST',
@@ -1591,10 +1699,10 @@ var AIAgent = {
             asset.element.onloadedmetadata = () => asset.duration = asset.element.duration;
             state.mediaAssets.push(asset);
             addAssetToTimeline(asset.id, null, state.currentTime, 'audio');
-            this.addMessage("Neural speech generated and added to timeline.", 'bot');
+            this.addMessage("Adobe Premiere speech generated and added to timeline.", 'bot');
         } catch (e) {
             console.error(e);
-            this.addMessage("Neural speech synthesis failed.", 'bot');
+            this.addMessage("Adobe Premiere speech synthesis failed.", 'bot');
         }
     },
 
@@ -1688,7 +1796,7 @@ function updateAdobeEditorSync() {
     }
 }
 
-// Adobe Reader Text Overlay Logic
+// Adobe Premiere Text Overlay Logic
 if (adobeTextEditor) {
     adobeTextEditor.oninput = (e) => {
         let clip = state.timelineClips.find(c => c.id === state.selectedClipId);
