@@ -836,6 +836,254 @@ body.style-matrix {
     margin-top: 15px;
 }
 
+/* Bottom Buttons */
+.bottom-btn {
+    position: fixed;
+    bottom: 20px;
+    background: #262626;
+    border: 1px solid #444;
+    padding: 8px 18px;
+    border-radius: 4px;
+    color: #ccc;
+    cursor: pointer;
+    z-index: 1000;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bottom-btn:hover {
+    background: #333;
+    color: #00AAFF;
+    border-color: #00AAFF;
+}
+
+
+.bottom-btn.center {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.bottom-btn.center:hover {
+    transform: translateX(-50%);
+}
+
+.bottom-btn.left-corner {
+    left: 20px;
+}
+
+.bottom-btn.right-corner {
+    right: 20px;
+}
+
+/* Floating Panels */
+.floating-panel {
+    position: fixed;
+    z-index: 2000; /* Higher z-index to stay above everything */
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    min-width: 250px;
+    background: #262626 !important; /* Solid Adobe background */
+    border: 1px solid #444 !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
+    pointer-events: auto;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 10px;
+    color: #00AAFF; /* Adobe Blue */
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.close-panel {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+
+.close-panel:hover {
+    color: white;
+}
+
+/* Templates Panel */
+#templates-panel {
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    max-height: 400px;
+}
+
+.templates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 15px;
+    overflow-y: auto;
+}
+
+.template-card {
+    background: #333;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    color: #ccc;
+}
+
+.template-card:hover {
+    border-color: #00AAFF;
+    background: #3a3a3a;
+    color: #fff;
+}
+
+.template-card i {
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+    display: block;
+    color: #00AAFF;
+}
+
+.template-card .name {
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Menu Panel */
+.side-menu {
+    bottom: 80px;
+    left: 30px;
+    width: 180px;
+}
+
+.menu-item {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    border-radius: 2px;
+    transition: all 0.1s;
+    color: #ccc;
+}
+
+.menu-item:hover {
+    background: #444;
+    color: #00AAFF;
+}
+
+.menu-item i {
+    width: 16px;
+    text-align: center;
+}
+
+/* Format Panel */
+.format-panel {
+    bottom: 80px;
+    right: 30px;
+    width: 220px;
+    display: none;
+    z-index: 3000;
+}
+
+.format-row {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 15px;
+}
+
+.format-row button {
+    flex: 1;
+    background: #333;
+    border: 1px solid #444;
+    color: #ccc;
+    padding: 8px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.format-row button:hover {
+    background: #444;
+    color: #fff;
+}
+
+.format-row button.active {
+    background: #00AAFF;
+    color: #000;
+    border-color: #00AAFF;
+}
+
+/* Subtitle Animations */
+.sub-glitch { animation: glitch 0.3s infinite; }
+.sub-neon { text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #00f3ff, 0 0 40px #00f3ff; }
+.sub-flicker { animation: flicker 2s infinite; }
+.sub-pulse { animation: pulse 1.5s infinite; }
+.sub-shake { animation: shake 0.5s infinite; }
+.sub-rainbow { animation: rainbow 5s infinite; }
+.sub-3d { text-shadow: 1px 1px 0 #00f3ff, 2px 2px 0 #bc00ff; }
+.sub-float { animation: floating 3s ease-in-out infinite; }
+
+@keyframes flicker {
+    0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% { opacity: 1; }
+    20%, 21.999%, 63%, 63.999%, 65%, 69.999% { opacity: 0.4; }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes shake {
+    0% { transform: translate(1px, 1px) rotate(0deg); }
+    10% { transform: translate(-1px, -2px) rotate(-1deg); }
+    20% { transform: translate(-3px, 0px) rotate(1deg); }
+    30% { transform: translate(3px, 2px) rotate(0deg); }
+    40% { transform: translate(1px, -1px) rotate(1deg); }
+    50% { transform: translate(-1px, 2px) rotate(-1deg); }
+}
+
+@keyframes rainbow {
+    0% { color: #ff0000; }
+    20% { color: #ff9900; }
+    40% { color: #33cc33; }
+    60% { color: #00ffff; }
+    80% { color: #0066ff; }
+    100% { color: #cc33ff; }
+}
+
+@keyframes floating {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+    100% { transform: translateY(0px); }
+}
+
+@keyframes glitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(-2px, -2px); }
+    60% { transform: translate(2px, 2px); }
+    80% { transform: translate(2px, -2px); }
+    100% { transform: translate(0); }
+}
+
 /* Custom scrollbar for side panel */
 .preview-side-controls::-webkit-scrollbar {
     width: 4px;

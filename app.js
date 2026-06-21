@@ -15,7 +15,8 @@ const state = {
     transitionContrast: 100,
     aspectRatio: '16/9',
     viewMode: 'fit',
-    themeStyle: 'neon'
+    themeStyle: 'neon',
+    lastPressedElementId: null
 };
 
 const mediaGrid = document.getElementById('media-grid');
@@ -41,6 +42,14 @@ const clipXInput = document.getElementById('clip-x');
 const clipYInput = document.getElementById('clip-y');
 const adobeTextEditor = document.getElementById("adobe-text-editor");
 const clipScaleInput = document.getElementById('clip-scale');
+
+const templatesTrigger = document.getElementById('templates-trigger');
+const templatesPanel = document.getElementById('templates-panel');
+const templatesGrid = document.getElementById('templates-grid');
+const menuTrigger = document.getElementById('menu-trigger');
+const menuPanel = document.getElementById('menu-panel');
+const textFormatTrigger = document.getElementById('text-format-trigger');
+const textFormatPanel = document.getElementById('text-format-panel');
 
 canvas.width = 1280;
 canvas.height = 720;
@@ -138,6 +147,18 @@ window.addEventListener('mouseup', () => {
 
 function selectClip(clipId) {
     state.selectedClipId = clipId;
+    state.lastPressedElementId = clipId; // For delete button
+
+    if (clipId) {
+        const clip = state.timelineClips.find(c => c.id === clipId);
+        if (clip && clip.type === 'text') {
+            textFormatPanel.style.display = 'flex';
+        } else {
+            textFormatPanel.style.display = 'none';
+        }
+    } else {
+        textFormatPanel.style.display = 'none';
+    }
     renderTimeline();
     updateUIForSelectedClip();
 }
@@ -156,6 +177,7 @@ function updateUIForSelectedClip() {
 
     if (clip.type === 'text') {
         updateTitleInputs(clip);
+        updateTextFormatUI(clip);
     }
 }
 
@@ -619,10 +641,30 @@ function renderPreview() {
         if (clip.text) {
             ctx.filter = 'none';
             const fontSize = parseInt(clip.fontSize) || 60;
-            ctx.font = `${fontSize}px Orbitron`;
+            ctx.font = `${clip.isItalic ? 'italic ' : ''}${clip.isBold ? 'bold ' : ''}${fontSize}px ${clip.fontFamily || 'Orbitron'}`;
             ctx.fillStyle = clip.color || '#00f3ff';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+
+            if (clip.subClass) {
+                // Add class to container or handle it here.
+                // Since we are drawing on canvas, we can't easily use CSS classes for animations.
+                // But we can mimic them based on the class name.
+                if (clip.subClass === 'sub-glitch') {
+                    clip.animation = 'glitch';
+                } else if (clip.subClass === 'sub-neon') {
+                    clip.textType = 'neon';
+                } else if (clip.subClass === 'sub-flicker') {
+                    // Mimic flicker
+                    if (Math.random() > 0.9) ctx.globalAlpha *= 0.3;
+                } else if (clip.subClass === 'sub-pulse') {
+                    clip.animation = 'pulse';
+                } else if (clip.subClass === 'sub-shake') {
+                    clip.animation = 'shake';
+                } else if (clip.subClass === 'sub-rainbow') {
+                    clip.animation = 'rainbow';
+                }
+            }
 
             let textToDraw = clip.text;
             let drawAlpha = 1.0;
@@ -633,27 +675,61 @@ function renderPreview() {
             const elapsed = state.currentTime - clip.startTime;
             const animType = clip.animation || 'none';
             if(animType === 'bounce'){
-    currentY += Math.sin(elapsed * 8) * 20;
-}
+                currentY += Math.sin(elapsed * 8) * 20;
+            }
 
-if(animType === 'rotate'){
-    ctx.rotate(Math.sin(elapsed * 2) * 0.15);
-}
+            if(animType === 'rotate'){
+                ctx.rotate(Math.sin(elapsed * 2) * 0.15);
+            }
 
-if(animType === 'glow'){
-    ctx.shadowBlur =
-        20 +
-        Math.sin(elapsed * 5) * 15;
-}
+            if(animType === 'glow'){
+                ctx.shadowBlur =
+                    20 +
+                    Math.sin(elapsed * 5) * 15;
+            }
 
-if(animType === 'wave'){
-    currentY += Math.sin(elapsed * 6) * 10;
-    currentX += Math.cos(elapsed * 6) * 10;
-}
+            if(animType === 'wave'){
+                currentY += Math.sin(elapsed * 6) * 10;
+                currentX += Math.cos(elapsed * 6) * 10;
+            }
 
-if(animType === 'float'){
-    currentY -= elapsed * 15;
-}
+            if(animType === 'float'){
+                currentY -= elapsed * 15;
+            }
+
+            if (animType === 'glitch') {
+                if (Math.random() > 0.85) {
+                    currentX += (Math.random() - 0.5) * 30;
+                    currentY += (Math.random() - 0.5) * 15;
+                    ctx.fillStyle = Math.random() > 0.5 ? '#ff0055' : '#00ffff';
+                    ctx.filter = 'contrast(200%) brightness(150%)';
+                }
+            }
+
+            if (animType === 'pulse') {
+                currentScale *= (1 + Math.sin(elapsed * 5) * 0.1);
+            }
+
+            if (animType === 'shake') {
+                currentX += Math.sin(elapsed * 30) * 8;
+                currentY += Math.cos(elapsed * 30) * 8;
+            }
+
+            if (animType === 'elastic') {
+                // Adobe smooth elastic easing
+                const duration = 1.2;
+                let t = elapsed / duration;
+                if (t > 1) t = 1;
+                const p = 0.3;
+                const s = p / 4;
+                const elastic = Math.pow(2, -10 * t) * Math.sin((t - s) * (2 * Math.PI) / p) + 1;
+                currentScale *= elastic;
+            }
+
+            if (animType === 'rainbow') {
+                const colors = ['#ff0000', '#ff9900', '#33cc33', '#00ffff', '#0066ff', '#cc33ff'];
+                ctx.fillStyle = colors[Math.floor(elapsed * 5) % colors.length];
+            }
 
             if (animType === 'fade') {
                 drawAlpha = Math.min(1, elapsed / 1);
@@ -672,6 +748,30 @@ if(animType === 'float'){
             ctx.translate(currentX, currentY);
             ctx.scale(currentScale, currentScale);
             ctx.translate(-currentX, -currentY);
+
+            if (clip.textType === 'neon') {
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = clip.color || '#00f3ff';
+            } else if (clip.textType === 'glass') {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.strokeText(textToDraw, currentX, currentY);
+            } else if (clip.textType === 'gradient') {
+                const grad = ctx.createLinearGradient(currentX - textWidth/2, currentY, currentX + textWidth/2, currentY);
+                grad.addColorStop(0, clip.color || '#00f3ff');
+                grad.addColorStop(1, '#ff00ff');
+                ctx.fillStyle = grad;
+            } else if (clip.textType === 'shadow') {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowOffsetX = 4;
+                ctx.shadowOffsetY = 4;
+            } else if (clip.textType === 'outline') {
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 4;
+                ctx.strokeText(textToDraw, currentX, currentY);
+            }
 
             const textWidth = ctx.measureText(textToDraw).width;
             const padding = 20;
@@ -877,7 +977,10 @@ function playback(timestamp) {
 function play() { state.isPlaying = true; playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>'; requestAnimationFrame(playback); }
 function pause() { state.isPlaying = false; playPauseBtn.innerHTML = '<i class="fas fa-play"></i>'; syncAudio(); }
 
-playPauseBtn.onclick = () => state.isPlaying ? pause() : play();
+playPauseBtn.onclick = () => {
+    state.lastPressedElementId = 'play-pause';
+    state.isPlaying ? pause() : play();
+};
 
 document.getElementById('prev-frame').onclick = () => {
     pause();
@@ -1041,6 +1144,8 @@ function showEffects() {
             renderEffectsList(e.target.value);
         };
     }
+    const subtitlesPanel = document.getElementById('subtitles-panel');
+    if (subtitlesPanel) subtitlesPanel.style.display = 'none';
     effectsPanel.style.display = 'block';
     renderEffectsList();
     updateEffectsSliders();
@@ -1060,14 +1165,24 @@ function renderEffectsList(query = '') {
             <div class="name">${fx.name}</div>
         `;
         card.onclick = () => {
+            state.lastPressedElementId = fx.id;
+            // Demo
+            renderPreview();
+            ctx.save();
+            ctx.filter = `brightness(${fx.filters.brightness || 100}%) contrast(${fx.filters.contrast || 100}%) grayscale(${fx.filters.grayscale || 0}%) sepia(${fx.filters.sepia || 0}%) blur(${fx.filters.blur || 0}px)`;
+            ctx.font = '50px Orbitron';
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.fillText("EFFECT PREVIEW: " + fx.name, 640, 360);
+            ctx.restore();
+        };
+        card.ondblclick = () => {
             const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (!clip) return;
-
-            if (fx.type === 'filter') {
+            if (clip && fx.type === 'filter') {
                 Object.assign(clip.filters, fx.filters);
                 updateEffectsSliders();
+                renderPreview();
             }
-            renderPreview();
         };
         grid.appendChild(card);
     });
@@ -1134,10 +1249,26 @@ function renderTransitionsList(query = '') {
             <div class="name">${t.name}</div>
         `;
         card.onclick = () => {
+            state.lastPressedElementId = t.id;
+            // Demo
+            renderPreview();
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1.0;
+            ctx.font = '50px Orbitron';
+            ctx.fillStyle = 'black';
+            ctx.textAlign = 'center';
+            ctx.fillText("TRANSITION DEMO: " + t.name, 640, 360);
+            ctx.restore();
+        };
+        card.ondblclick = () => {
             const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
             if (clip && clip.track === 'video') {
                 clip.transition = t.id;
                 renderTimeline();
+                renderPreview();
             }
         };
         grid.appendChild(card);
@@ -1148,6 +1279,7 @@ document.getElementById('search-transitions').oninput = (e) => {
     renderTransitionsList(e.target.value);
 };
 
+
 document.getElementById('trans-speed').oninput = (e) => {
     state.transitionSpeed = e.target.value;
     renderPreview();
@@ -1157,6 +1289,191 @@ document.getElementById('trans-contrast').oninput = (e) => {
     state.transitionContrast = e.target.value;
     renderPreview();
 };
+
+// --- Templates Logic ---
+const templatesLibrary = [
+    { id: 'tpl-mg-intro', name: 'Adobe Motion Graphics Intro', icon: 'fa-bolt', clips: [
+        { type: 'text', text: 'ADOBE PREMIERE', startTime: 0, duration: 2, x: 640, y: 320, fontSize: 100, textType: 'neon', animation: 'glitch', color: '#00AAFF' },
+        { type: 'text', text: 'PRO EDITION', startTime: 0.5, duration: 1.5, x: 640, y: 450, fontSize: 60, color: '#ffffff', animation: 'elastic' }
+    ]},
+    { id: 'tpl-7030', name: '70/30 Adobe Split', icon: 'fa-columns', clips: [
+        { type: 'text', text: 'MAIN CONTENT', startTime: 0, duration: 10, x: 400, y: 360, fontSize: 40, textType: 'glass', animation: 'fade' },
+        { type: 'text', text: 'METADATA STREAM', startTime: 0, duration: 10, x: 1000, y: 360, fontSize: 20, color: '#ffd700', animation: 'typewriter' }
+    ]},
+    { id: 'tpl-credits', name: 'Cinematic Rolling Credits', icon: 'fa-list', clips: [
+        { type: 'text', text: 'DIRECTED BY', startTime: 0, duration: 5, x: 640, y: 200, fontSize: 30, color: '#999' },
+        { type: 'text', text: 'JULES AI', startTime: 0.5, duration: 4.5, x: 640, y: 260, fontSize: 50, color: '#fff', animation: 'fade' },
+        { type: 'text', text: 'SOFTWARE ENGINEER', startTime: 1, duration: 4, x: 640, y: 400, fontSize: 25, color: '#999' },
+        { type: 'text', text: 'ADOBE REPLICA', startTime: 1.5, duration: 3.5, x: 640, y: 460, fontSize: 40, color: '#00AAFF', animation: 'elastic' }
+    ]},
+    { id: 'tpl-social-pill', name: 'Social Media Lower Third', icon: 'fa-id-card', clips: [
+        { type: 'text', text: 'SUBSCRIBE @ADOBE', startTime: 0.5, duration: 4, x: 300, y: 650, fontSize: 35, color: '#ffffff', textType: 'gradient', animation: 'elastic' }
+    ]},
+    { id: 'tpl-neon-title', name: 'Neon Glitch Title', icon: 'fa-lightbulb', clips: [
+        { type: 'text', text: 'FUTURISTIC', startTime: 0, duration: 3, x: 640, y: 360, fontSize: 120, textType: 'neon', animation: 'glitch', color: '#ff00ff' }
+    ]}
+];
+
+function initTemplates() {
+    templatesGrid.innerHTML = '';
+    templatesLibrary.forEach(tpl => {
+        const card = document.createElement('div');
+        card.className = 'template-card';
+        card.innerHTML = `
+            <i class="fas ${tpl.icon}"></i>
+            <div class="name">${tpl.name}</div>
+        `;
+        card.onclick = () => {
+            state.lastPressedElementId = tpl.id;
+            // Demo on preview
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '40px Orbitron';
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.fillText("PREVIEW: " + tpl.name, 640, 360);
+        };
+        card.ondblclick = () => {
+            tpl.clips.forEach(c => {
+                const clip = {
+                    id: 'clip-' + Math.random().toString(36).substr(2, 9),
+                    assetId: null,
+                    type: 'text',
+                    track: 'video',
+                    trackId: 'video-2',
+                    startTime: state.currentTime + c.startTime,
+                    duration: c.duration,
+                    offset: 0,
+                    filters: { brightness: 100, contrast: 100, grayscale: 0, sepia: 0, blur: 0 },
+                    volume: 100,
+                    text: c.text,
+                    fontSize: c.fontSize || 60,
+                    color: c.color || '#00f3ff',
+                    mode: c.mode || 'plain',
+                    animation: c.animation || 'none',
+                    x: c.x || 640,
+                    y: c.y || 360,
+                    scale: c.scale || 1,
+                    fontFamily: c.fontFamily || 'Orbitron',
+                    isBold: c.isBold || false,
+                    isItalic: c.isItalic || false,
+                    textType: c.textType || 'plain'
+                };
+                state.timelineClips.push(clip);
+            });
+            updateDuration();
+            renderTimeline();
+            renderPreview();
+        };
+        templatesGrid.appendChild(card);
+    });
+}
+
+templatesTrigger.onclick = () => {
+    templatesPanel.style.display = templatesPanel.style.display === 'none' ? 'flex' : 'none';
+    if (templatesPanel.style.display === 'flex') initTemplates();
+};
+
+menuTrigger.onclick = () => {
+    menuPanel.style.display = menuPanel.style.display === 'none' ? 'flex' : 'none';
+    if (menuPanel.style.display === 'flex') initMenuActions();
+};
+
+function initMenuActions() {
+    const menuItems = menuPanel.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+        item.onclick = (e) => {
+            const text = item.innerText.trim();
+            if (text === 'Project') {
+                if (confirm('Clear entire timeline?')) {
+                    state.timelineClips = [];
+                    updateDuration();
+                    renderTimeline();
+                    renderPreview();
+                }
+            } else if (text === 'Help') {
+                helpModal.style.display = 'flex';
+            } else if (text === 'Sequence') {
+                state.currentTime = 0;
+                updateTimestamp();
+                renderPreview();
+                syncAudio();
+            } else if (text === 'Clip') {
+                importBtn.click();
+            } else if (text === 'Window') {
+                alert('All panels normalized.');
+            }
+            menuPanel.style.display = 'none';
+        };
+    });
+}
+
+textFormatTrigger.onclick = () => {
+    const currentDisplay = window.getComputedStyle(textFormatPanel).display;
+    if (currentDisplay === 'none') {
+        textFormatPanel.style.display = 'flex';
+    } else {
+        textFormatPanel.style.display = 'none';
+    }
+};
+
+document.querySelectorAll('.close-panel').forEach(btn => {
+    btn.onclick = (e) => {
+        e.target.closest('.floating-panel').style.display = 'none';
+    };
+});
+
+const fmtFont = document.getElementById('fmt-font');
+const fmtBold = document.getElementById('fmt-bold');
+const fmtItalic = document.getElementById('fmt-italic');
+const fmtUnderline = document.getElementById('fmt-underline');
+const fmtType = document.getElementById('fmt-type');
+
+function updateTextFormatUI(clip) {
+    if (!clip || clip.type !== 'text') return;
+    fmtFont.value = clip.fontFamily || 'Orbitron';
+    fmtBold.classList.toggle('active', !!clip.isBold);
+    fmtItalic.classList.toggle('active', !!clip.isItalic);
+    fmtUnderline.classList.toggle('active', !!clip.isUnderline);
+    fmtType.value = clip.textType || 'plain';
+}
+
+fmtFont.onchange = () => {
+    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
+    if (clip && clip.type === 'text') {
+        clip.fontFamily = fmtFont.value;
+        renderPreview();
+    }
+};
+
+fmtBold.onclick = () => {
+    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
+    if (clip && clip.type === 'text') {
+        clip.isBold = !clip.isBold;
+        fmtBold.classList.toggle('active', clip.isBold);
+        renderPreview();
+    }
+};
+
+fmtItalic.onclick = () => {
+    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
+    if (clip && clip.type === 'text') {
+        clip.isItalic = !clip.isItalic;
+        fmtItalic.classList.toggle('active', clip.isItalic);
+        renderPreview();
+    }
+};
+
+fmtType.onchange = () => {
+    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
+    if (clip && clip.type === 'text') {
+        clip.textType = fmtType.value;
+        renderPreview();
+    }
+};
+
+// --- Subtitles Logic ---
 
 // --- Search Bars ---
 document.getElementById('search-media').oninput = (e) => {
@@ -1293,9 +1610,10 @@ document.getElementById('split-btn').onclick = () => {
 };
 
 document.getElementById('delete-btn').onclick = () => {
-    if (state.selectedClipId) {
-        state.timelineClips = state.timelineClips.filter(c => c.id !== state.selectedClipId);
-        selectClip(null);
+    if (state.lastPressedElementId) {
+        state.timelineClips = state.timelineClips.filter(c => c.id !== state.lastPressedElementId);
+        if (state.selectedClipId === state.lastPressedElementId) selectClip(null);
+        state.lastPressedElementId = null;
         updateDuration(); renderTimeline(); renderPreview(); syncAudio();
     }
 };
@@ -1496,26 +1814,6 @@ var AIAgent = {
 
 AIAgent.init();
 
-// Adobe Reader Text Overlay Logic
-if (adobeTextEditor) {
-    adobeTextEditor.oninput = (e) => {
-        let clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-        if (!clip || clip.type !== 'text') {
-            clip = state.timelineClips.find(c => c.type === 'text' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
-            if (clip) selectClip(clip.id);
-            else {
-                AIAgent.mockGenerateCaptions("New Title", state.currentTime, 3);
-                clip = state.timelineClips[state.timelineClips.length - 1];
-                selectClip(clip.id);
-            }
-        }
-        if (clip && clip.type === 'text') {
-            clip.text = e.target.value;
-            renderPreview();
-            renderTimeline();
-        }
-    };
-}
 
 // Gap Double Click
 [videoTrack1, videoTrack2, audioTrack].forEach(track => {

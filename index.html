@@ -143,9 +143,6 @@
         <section class="preview-panel">
             <div class="preview-main">
                 <div class="preview-container" id="main-preview-container">
-                    <div id="adobe-text-overlay">
-                        <input type="text" id="adobe-text-editor" placeholder="Adobe Reader: Edit Preview Text..." spellcheck="false">
-                    </div>
                     <canvas id="preview-canvas"></canvas>
                 </div>
                 <div class="preview-controls">
@@ -284,6 +281,71 @@
         <div class="ai-input-area">
             <input type="text" id="ai-command-input" placeholder="Ask AI to do anything...">
             <button id="send-ai-btn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <div id="templates-trigger" class="bottom-btn center" title="Templates">
+        <i class="fas fa-layer-group"></i> Templates
+    </div>
+
+    <div id="templates-panel" class="glass floating-panel" style="display: none;">
+        <div class="panel-header">
+            <span>Adobe Templates</span>
+            <button class="close-panel"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="templates-grid" id="templates-grid"></div>
+    </div>
+
+    <div id="menu-trigger" class="bottom-btn left-corner" title="Menu">
+        <i class="fas fa-bars"></i>
+    </div>
+
+    <div id="menu-panel" class="glass floating-panel side-menu" style="display: none;">
+        <div class="menu-item"><i class="fas fa-file"></i> Project</div>
+        <div class="menu-item"><i class="fas fa-edit"></i> Edit</div>
+        <div class="menu-item"><i class="fas fa-video"></i> Clip</div>
+        <div class="menu-item"><i class="fas fa-magic"></i> Sequence</div>
+        <div class="menu-item"><i class="fas fa-chart-bar"></i> Markers</div>
+        <div class="menu-item"><i class="fas fa-window-maximize"></i> Window</div>
+        <div class="menu-item"><i class="fas fa-question-circle"></i> Help</div>
+    </div>
+
+    <div id="text-format-trigger" class="bottom-btn right-corner" title="Text Formatting">
+        <i class="fas fa-font"></i>
+    </div>
+
+    <div id="text-format-panel" class="glass floating-panel format-panel">
+        <div class="panel-header">
+            <span>Text Properties</span>
+            <button class="close-panel"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="format-controls">
+            <div class="input-group">
+                <label>Font Family</label>
+                <select id="fmt-font">
+                    <option value="Orbitron">Orbitron</option>
+                    <option value="Inter">Inter</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                </select>
+            </div>
+            <div class="format-row">
+                <button id="fmt-bold" title="Bold"><i class="fas fa-bold"></i></button>
+                <button id="fmt-italic" title="Italic"><i class="fas fa-italic"></i></button>
+                <button id="fmt-underline" title="Underline"><i class="fas fa-underline"></i></button>
+            </div>
+            <div class="input-group">
+                <label>Text Type</label>
+                <select id="fmt-type">
+                    <option value="plain">Plain</option>
+                    <option value="shadow">Shadow</option>
+                    <option value="outline">Outline</option>
+                    <option value="neon">Neon</option>
+                    <option value="glass">Glass</option>
+                    <option value="gradient">Gradient</option>
+                </select>
+            </div>
         </div>
     </div>
 
