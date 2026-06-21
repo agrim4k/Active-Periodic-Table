@@ -1,4 +1,4 @@
-        // app.js - WonderClone Filmora Futuristic Edition
+// app.js - Adobe Premiere Pro Clone - Professional Edition
 
 const state = {
     mediaAssets: [],
@@ -205,9 +205,18 @@ tabs.forEach(tab => {
         const target = tab.dataset.tab;
         if (target === 'effects') {
             showEffects();
+        } else if (target === 'templates') {
+            if(panels.media) panels.media.style.display = 'none';
+            if(panels.titles) panels.titles.style.display = 'none';
+            if(panels.audio) panels.audio.style.display = 'none';
+            if(panels.transitions) panels.transitions.style.display = 'none';
+            if(effectsPanel) effectsPanel.style.display = 'none';
+            document.getElementById('templates-panel').style.display = 'block';
+            initTemplates();
         } else if (panels[target]) {
             panels[target].style.display = 'block';
             if (effectsPanel) effectsPanel.style.display = 'none';
+            if (document.getElementById('templates-panel')) document.getElementById('templates-panel').style.display = 'none';
             if (target === 'transitions') showTransitions();
         }
     };
@@ -655,6 +664,35 @@ if(animType === 'float'){
     currentY -= elapsed * 15;
 }
 
+if(animType === 'glitch'){
+    if(Math.random() > 0.8) {
+        currentX += (Math.random() - 0.5) * 20;
+        currentY += (Math.random() - 0.5) * 20;
+        ctx.fillStyle = Math.random() > 0.5 ? '#ff00ff' : '#00ffff';
+    }
+}
+
+if(animType === 'neon'){
+    const flicker = Math.sin(elapsed * 20) > 0 ? 1 : 0.3;
+    drawAlpha *= flicker;
+    ctx.shadowBlur = 20 * flicker;
+}
+
+if(animType === 'shake'){
+    currentX += Math.sin(elapsed * 50) * 5;
+    currentY += Math.cos(elapsed * 40) * 5;
+}
+
+if(animType === '3d'){
+    ctx.transform(1, Math.sin(elapsed) * 0.2, Math.cos(elapsed) * 0.2, 1, 0, 0);
+}
+
+if(animType === 'rainbow'){
+    const hue = (elapsed * 100) % 360;
+    ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+    ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+}
+
             if (animType === 'fade') {
                 drawAlpha = Math.min(1, elapsed / 1);
             } else if (animType === 'slide') {
@@ -761,19 +799,41 @@ function drawCloud(ctx, x, y, width, height) {
     ctx.stroke();
 }
 
+// --- Audio Core ---
+let audioCtx, masterGain, exportDest;
+
+function initAudioCore() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    exportDest = audioCtx.createMediaStreamDestination();
+    masterGain.connect(audioCtx.destination);
+    masterGain.connect(exportDest);
+}
+
 // --- Audio Sync ---
 function syncAudio() {
+    initAudioCore();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
     const activeAudioClips = state.timelineClips.filter(c => c.track === 'audio' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
 
     state.timelineClips.filter(c => c.track === 'audio').forEach(clip => {
         const asset = state.mediaAssets.find(a => a.id === clip.assetId);
         if (asset && asset.element) {
             const audio = asset.element;
+            if (!audio.sourceNode) {
+                audio.sourceNode = audioCtx.createMediaElementSource(audio);
+                audio.gainNode = audioCtx.createGain();
+                audio.sourceNode.connect(audio.gainNode);
+                audio.gainNode.connect(masterGain);
+            }
+
             if (activeAudioClips.includes(clip) && state.isPlaying) {
                 const time = (state.currentTime - clip.startTime) + clip.offset;
                 if (Math.abs(audio.currentTime - time) > 0.1) audio.currentTime = time;
-                audio.volume = ((clip.volume || 100) / 100) * (state.masterVolume / 100);
-                if (audio.paused) audio.play();
+                audio.gainNode.gain.value = ((clip.volume || 100) / 100) * (state.masterVolume / 100);
+                if (audio.paused) audio.play().catch(e => console.warn("Audio play failed", e));
             } else {
                 audio.pause();
             }
@@ -871,6 +931,7 @@ function playback(timestamp) {
     updateTimestamp();
     renderPreview();
     syncAudio();
+    updateAdobeEditorSync();
     requestAnimationFrame(playback);
 }
 
@@ -950,6 +1011,80 @@ timeline.onmousedown = (e) => {
     document.addEventListener('mousemove', scrub);
     document.addEventListener('mouseup', stopScrub);
 };
+
+// --- Templates System ---
+const templatesLibrary = [
+    { id: 'vlog', name: 'Vlog Preset', icon: 'fa-video', description: 'Upbeat lofi with zoom effects' },
+    { id: 'cinematic', name: 'Cinematic', icon: 'fa-film', description: 'Epic audio and vintage filters' },
+    { id: 'horror', name: 'Horror', icon: 'fa-ghost', description: 'Dark filters and shake effects' },
+    { id: 'scifi', name: 'Sci-Fi', icon: 'fa-rocket', description: 'Cyberpunk audio and neon titles' },
+    { id: 'news', name: 'Breaking News', icon: 'fa-newspaper', description: 'Classic news layout' },
+    { id: 'minimal', name: 'Minimalist', icon: 'fa-square', description: 'Clean and simple transitions' },
+    { id: 'retro', name: 'Retro 80s', icon: 'fa-tv', description: 'VHS filters and synthwave' },
+    { id: 'gaming', name: 'Gaming Highlights', icon: 'fa-gamepad', description: 'High energy and glitches' },
+    { id: 'travel', name: 'Travel Journal', icon: 'fa-map-marked-alt', description: 'Soft fades and nature lofi' },
+    { id: 'doc', name: 'Documentary', icon: 'fa-microphone', description: 'Professional clean look' }
+];
+
+function initTemplates() {
+    const grid = document.getElementById('templates-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    templatesLibrary.forEach(template => {
+        const card = document.createElement('div');
+        card.className = 'effect-card';
+        card.innerHTML = `
+            <div class="icon"><i class="fas ${template.icon}"></i></div>
+            <div class="name">${template.name}</div>
+            <div style="font-size: 10px; color: var(--text-dim);">${template.description}</div>
+        `;
+        card.onclick = () => applyTemplate(template.id);
+        grid.appendChild(card);
+    });
+}
+
+function applyTemplate(id) {
+    AIAgent.addMessage(`Applying ${id} template...`, 'bot');
+    switch(id) {
+        case 'vlog':
+            state.timelineClips.forEach(c => { if(c.type === 'video') c.scale = 1.1; });
+            const lofi = state.mediaAssets.find(a => a.genre === 'Lofi');
+            if(lofi) addAssetToTimeline(lofi.id, null, 0, 'audio');
+            break;
+        case 'cinematic':
+            state.timelineClips.forEach(c => {
+                if(c.type === 'video') {
+                    c.filters.sepia = 30;
+                    c.filters.contrast = 120;
+                }
+            });
+            const epic = state.mediaAssets.find(a => a.genre === 'Cinematic');
+            if(epic) addAssetToTimeline(epic.id, null, 0, 'audio');
+            break;
+        case 'horror':
+            state.timelineClips.forEach(c => {
+                if(c.type === 'video') {
+                    c.filters.grayscale = 50;
+                    c.filters.brightness = 70;
+                    c.animation = 'shake';
+                }
+            });
+            break;
+        case 'scifi':
+            state.timelineClips.forEach(c => {
+                if(c.type === 'video') {
+                    c.filters.brightness = 130;
+                    c.filters.contrast = 130;
+                }
+            });
+            const cyber = state.mediaAssets.find(a => a.genre === 'Cyberpunk');
+            if(cyber) addAssetToTimeline(cyber.id, null, 0, 'audio');
+            break;
+        // Add more template logic as needed
+    }
+    renderPreview();
+    renderTimeline();
+}
 
 // --- Effects Panel ---
 let effectsPanel = null;
@@ -1334,7 +1469,7 @@ document.getElementById('export-btn').onclick = () => {
     frame();
 };
 
-console.log("WonderClone Futuristic Loaded");
+console.log("Adobe Premiere Pro Clone Loaded");
 requestAnimationFrame(playback);
 
 
@@ -1393,6 +1528,9 @@ var AIAgent = {
             - {"action": "split", "time": seconds}
             - {"action": "setFilter", "clipId": "id", "filter": "brightness"|"contrast"|"blur", "value": number}
             - {"action": "setAspectRatio", "ratio": "16/9"|"9/16"|"1/1"}
+            - {"action": "generateTTS", "text": "string"}
+            - {"action": "generateImage", "description": "string"}
+            - {"action": "applyTemplate", "id": "vlog"|"cinematic"|"horror"|"scifi"}
 
             Only return the JSON array, no other text.`;
 
@@ -1400,10 +1538,10 @@ var AIAgent = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`
+                    'Authorization': `Bearer ${localStorage.getItem('OPENAI_API_KEY') || OPENAI_API_KEY}`
                 },
                 body: JSON.stringify({
-                    model: "gpt-3.5-turbo",
+                    model: "gpt-4o",
                     messages: [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: userPrompt }
@@ -1425,6 +1563,41 @@ var AIAgent = {
         }
     },
 
+    async generateTTS(text) {
+        this.addMessage("Generating neural speech...", 'bot');
+        try {
+            const response = await fetch('https://api.openai.com/v1/audio/speech', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('OPENAI_API_KEY') || OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "tts-1",
+                    input: text,
+                    voice: "alloy"
+                })
+            });
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const asset = {
+                id: 'tts-' + Math.random().toString(36).substr(2, 9),
+                name: "TTS: " + text.substring(0, 20),
+                type: 'audio',
+                url: url,
+                duration: 0,
+                element: new Audio(url)
+            };
+            asset.element.onloadedmetadata = () => asset.duration = asset.element.duration;
+            state.mediaAssets.push(asset);
+            addAssetToTimeline(asset.id, null, state.currentTime, 'audio');
+            this.addMessage("Neural speech generated and added to timeline.", 'bot');
+        } catch (e) {
+            console.error(e);
+            this.addMessage("Neural speech synthesis failed.", 'bot');
+        }
+    },
+
     executeActions(actions) {
         actions.forEach(act => {
             switch(act.action) {
@@ -1433,6 +1606,15 @@ var AIAgent = {
                     break;
                 case 'setText':
                     this.mockGenerateCaptions(act.text, act.startTime, act.duration);
+                    break;
+                case 'generateTTS':
+                    this.generateTTS(act.text);
+                    break;
+                case 'generateImage':
+                    this.generatePlaceholderAsset(act.description);
+                    break;
+                case 'applyTemplate':
+                    applyTemplate(act.id);
                     break;
                 case 'setAspectRatio':
                     state.aspectRatio = act.ratio;
@@ -1495,6 +1677,16 @@ var AIAgent = {
 };
 
 AIAgent.init();
+
+function updateAdobeEditorSync() {
+    if (!adobeTextEditor) return;
+    const activeTextClip = state.timelineClips.find(c => c.type === 'text' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
+    if (activeTextClip && document.activeElement !== adobeTextEditor) {
+        adobeTextEditor.value = activeTextClip.text;
+    } else if (!activeTextClip && document.activeElement !== adobeTextEditor) {
+        adobeTextEditor.value = '';
+    }
+}
 
 // Adobe Reader Text Overlay Logic
 if (adobeTextEditor) {

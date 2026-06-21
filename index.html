@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WonderClone Filmora - Futuristic Edition</title>
+    <title>Adobe Premiere Pro Clone - Professional Edition</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <header class="top-bar">
-        <div class="logo">Wonder Editor <span style="color: #fff;">Filmora</span></div>
+        <div class="logo">Adobe <span style="color: #fff;">Premiere Pro</span></div>
         <div class="actions">
             <button id="help-btn" title="System Manual"><i class="fas fa-question-circle"></i> HOW IT WORKS</button>
             <button id="import-btn"><i class="fas fa-file-import"></i> Import</button>
@@ -21,10 +21,21 @@
         <section class="left-panel glass">
             <div class="tabs">
                 <button class="tab active" data-tab="media">Media</button>
+                <button class="tab" data-tab="templates">Templates</button>
                 <button class="tab" data-tab="titles">Titles</button>
                 <button class="tab" data-tab="audio">Audio</button>
                 <button class="tab" data-tab="effects">Effects</button>
                 <button class="tab" data-tab="transitions">Transitions</button>
+            </div>
+
+            <!-- Templates Panel (Hidden by default) -->
+            <div id="templates-panel" class="library-container" style="display: none;">
+                <h3>Production Templates</h3>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-templates" placeholder="Search templates...">
+                </div>
+                <div class="effects-grid" id="templates-grid"></div>
             </div>
 
             <div id="media-library" class="library-container">
@@ -72,6 +83,11 @@
 <option value="glow">Glow Pulse</option>
 <option value="wave">Wave</option>
 <option value="float">Float</option>
+<option value="glitch">Glitch</option>
+<option value="neon">Neon Flicker</option>
+<option value="shake">Neural Shake</option>
+<option value="3d">3D Perspective</option>
+<option value="rainbow">Rainbow Pulse</option>
                     </select>
                 </div>
                 <div class="input-group">

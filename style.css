@@ -1,16 +1,16 @@
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap');
 
 :root {
-    --bg-gradient: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0f0f1a 100%);
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --accent: #00f3ff;
-    --accent-glow: rgba(0, 243, 255, 0.5);
-    --secondary: #bc00ff;
-    --text: #e0e0e0;
-    --text-dim: #999;
-    --border-radius: 12px;
-    --timeline-height: 280px;
+    --bg-gradient: linear-gradient(180deg, #1D1D1D 0%, #111111 100%);
+    --glass-bg: rgba(45, 45, 45, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.05);
+    --accent: #00AAFF;
+    --accent-glow: rgba(0, 170, 255, 0.3);
+    --secondary: #909090;
+    --text: #D0D0D0;
+    --text-dim: #777;
+    --border-radius: 4px;
+    --timeline-height: 320px;
 }
 
 * {
