@@ -22,6 +22,7 @@
             <div class="tabs">
                 <button class="tab active" data-tab="media">Media</button>
                 <button class="tab" data-tab="titles">Titles</button>
+                <button class="tab" data-tab="subtitles">Subtitles</button>
                 <button class="tab" data-tab="audio">Audio</button>
                 <button class="tab" data-tab="effects">Effects</button>
                 <button class="tab" data-tab="transitions">Transitions</button>
@@ -137,6 +138,16 @@
                         <input type="range" id="trans-contrast" min="0" max="200" value="100">
                     </div>
                 </div>
+            </div>
+
+            <!-- Subtitles Panel (Hidden by default) -->
+            <div id="subtitles-panel" class="library-container" style="display: none;">
+                <h3>Professional Subtitles</h3>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-subtitles" placeholder="Search subtitle styles...">
+                </div>
+                <div class="effects-grid" id="subtitles-grid"></div>
             </div>
         </section>
 

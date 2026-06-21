@@ -147,7 +147,7 @@ window.addEventListener('mouseup', () => {
 
 function selectClip(clipId) {
     state.selectedClipId = clipId;
-    state.lastPressedElementId = clipId; // For delete button
+    if (clipId) state.lastPressedElementId = clipId; // For delete button
 
     if (clipId) {
         const clip = state.timelineClips.find(c => c.id === clipId);
@@ -210,6 +210,7 @@ const tabs = document.querySelectorAll('.tab');
 const panels = {
     media: document.getElementById('media-library'),
     titles: document.getElementById('titles-panel'),
+    subtitles: document.getElementById('subtitles-panel'),
     audio: document.getElementById('audio-panel'),
     effects: null, // created dynamically
     transitions: document.getElementById('transitions-panel')
@@ -231,6 +232,7 @@ tabs.forEach(tab => {
             panels[target].style.display = 'block';
             if (effectsPanel) effectsPanel.style.display = 'none';
             if (target === 'transitions') showTransitions();
+            if (target === 'subtitles') showSubtitles();
         }
     };
 });
@@ -645,26 +647,6 @@ function renderPreview() {
             ctx.fillStyle = clip.color || '#00f3ff';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-
-            if (clip.subClass) {
-                // Add class to container or handle it here.
-                // Since we are drawing on canvas, we can't easily use CSS classes for animations.
-                // But we can mimic them based on the class name.
-                if (clip.subClass === 'sub-glitch') {
-                    clip.animation = 'glitch';
-                } else if (clip.subClass === 'sub-neon') {
-                    clip.textType = 'neon';
-                } else if (clip.subClass === 'sub-flicker') {
-                    // Mimic flicker
-                    if (Math.random() > 0.9) ctx.globalAlpha *= 0.3;
-                } else if (clip.subClass === 'sub-pulse') {
-                    clip.animation = 'pulse';
-                } else if (clip.subClass === 'sub-shake') {
-                    clip.animation = 'shake';
-                } else if (clip.subClass === 'sub-rainbow') {
-                    clip.animation = 'rainbow';
-                }
-            }
 
             let textToDraw = clip.text;
             let drawAlpha = 1.0;
@@ -1165,8 +1147,7 @@ function renderEffectsList(query = '') {
             <div class="name">${fx.name}</div>
         `;
         card.onclick = () => {
-            state.lastPressedElementId = fx.id;
-            // Demo
+            // One click: Demo on preview
             renderPreview();
             ctx.save();
             ctx.filter = `brightness(${fx.filters.brightness || 100}%) contrast(${fx.filters.contrast || 100}%) grayscale(${fx.filters.grayscale || 0}%) sepia(${fx.filters.sepia || 0}%) blur(${fx.filters.blur || 0}px)`;
@@ -1175,14 +1156,17 @@ function renderEffectsList(query = '') {
             ctx.textAlign = 'center';
             ctx.fillText("EFFECT PREVIEW: " + fx.name, 640, 360);
             ctx.restore();
-        };
-        card.ondblclick = () => {
+
+            // Also allow applying to currently selected clip
             const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
             if (clip && fx.type === 'filter') {
                 Object.assign(clip.filters, fx.filters);
                 updateEffectsSliders();
                 renderPreview();
             }
+        };
+        card.ondblclick = () => {
+            // Double click: Add to timeline if applicable (not standard for filters, but we ensure one-click works)
         };
         grid.appendChild(card);
     });
@@ -1249,8 +1233,7 @@ function renderTransitionsList(query = '') {
             <div class="name">${t.name}</div>
         `;
         card.onclick = () => {
-            state.lastPressedElementId = t.id;
-            // Demo
+            // One click: Demo
             renderPreview();
             ctx.save();
             ctx.globalAlpha = 0.5;
@@ -1262,14 +1245,17 @@ function renderTransitionsList(query = '') {
             ctx.textAlign = 'center';
             ctx.fillText("TRANSITION DEMO: " + t.name, 640, 360);
             ctx.restore();
-        };
-        card.ondblclick = () => {
+
+            // One click: Apply to selected clip
             const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
             if (clip && clip.track === 'video') {
                 clip.transition = t.id;
                 renderTimeline();
                 renderPreview();
             }
+        };
+        card.ondblclick = () => {
+            // Standardizing interaction
         };
         grid.appendChild(card);
     });
@@ -1292,25 +1278,85 @@ document.getElementById('trans-contrast').oninput = (e) => {
 
 // --- Templates Logic ---
 const templatesLibrary = [
-    { id: 'tpl-mg-intro', name: 'Adobe Motion Graphics Intro', icon: 'fa-bolt', clips: [
-        { type: 'text', text: 'ADOBE PREMIERE', startTime: 0, duration: 2, x: 640, y: 320, fontSize: 100, textType: 'neon', animation: 'glitch', color: '#00AAFF' },
-        { type: 'text', text: 'PRO EDITION', startTime: 0.5, duration: 1.5, x: 640, y: 450, fontSize: 60, color: '#ffffff', animation: 'elastic' }
+    { id: 'tpl-cyber', name: 'Cyberpunk City', icon: 'fa-city', bg: 'https://picsum.photos/seed/cyber/1280/720', clips: [
+        { type: 'text', text: 'NEO TOKYO', startTime: 0, duration: 5, x: 640, y: 300, fontSize: 80, textType: 'neon', color: '#00f3ff', animation: 'glitch' },
+        { type: 'text', text: 'YEAR 2077', startTime: 1, duration: 4, x: 640, y: 400, fontSize: 40, color: '#ff00ff', animation: 'fade' }
     ]},
-    { id: 'tpl-7030', name: '70/30 Adobe Split', icon: 'fa-columns', clips: [
-        { type: 'text', text: 'MAIN CONTENT', startTime: 0, duration: 10, x: 400, y: 360, fontSize: 40, textType: 'glass', animation: 'fade' },
-        { type: 'text', text: 'METADATA STREAM', startTime: 0, duration: 10, x: 1000, y: 360, fontSize: 20, color: '#ffd700', animation: 'typewriter' }
+    { id: 'tpl-nature', name: 'Zen Garden', icon: 'fa-leaf', bg: 'https://picsum.photos/seed/nature/1280/720', clips: [
+        { type: 'text', text: 'PEACEFUL', startTime: 0, duration: 6, x: 640, y: 360, fontSize: 100, textType: 'glass', color: '#ffffff', animation: 'fade' },
+        { type: 'text', text: 'FIND YOUR INNER CALM', startTime: 2, duration: 4, x: 640, y: 480, fontSize: 30, color: '#d4edda' }
     ]},
-    { id: 'tpl-credits', name: 'Cinematic Rolling Credits', icon: 'fa-list', clips: [
-        { type: 'text', text: 'DIRECTED BY', startTime: 0, duration: 5, x: 640, y: 200, fontSize: 30, color: '#999' },
-        { type: 'text', text: 'JULES AI', startTime: 0.5, duration: 4.5, x: 640, y: 260, fontSize: 50, color: '#fff', animation: 'fade' },
-        { type: 'text', text: 'SOFTWARE ENGINEER', startTime: 1, duration: 4, x: 640, y: 400, fontSize: 25, color: '#999' },
-        { type: 'text', text: 'ADOBE REPLICA', startTime: 1.5, duration: 3.5, x: 640, y: 460, fontSize: 40, color: '#00AAFF', animation: 'elastic' }
+    { id: 'tpl-retro', name: 'Retro Wave', icon: 'fa-sun', bg: 'https://picsum.photos/seed/retro/1280/720', clips: [
+        { type: 'text', text: 'SYNTHWAVE', startTime: 0, duration: 5, x: 640, y: 360, fontSize: 110, textType: 'gradient', color: '#ff00ff', animation: 'pulse' },
+        { type: 'text', text: 'EST. 1984', startTime: 1, duration: 4, x: 640, y: 500, fontSize: 35, color: '#00ffff' }
     ]},
-    { id: 'tpl-social-pill', name: 'Social Media Lower Third', icon: 'fa-id-card', clips: [
-        { type: 'text', text: 'SUBSCRIBE @ADOBE', startTime: 0.5, duration: 4, x: 300, y: 650, fontSize: 35, color: '#ffffff', textType: 'gradient', animation: 'elastic' }
+    { id: 'tpl-corp', name: 'Corporate Pro', icon: 'fa-briefcase', bg: 'https://picsum.photos/seed/office/1280/720', clips: [
+        { type: 'text', text: 'QUARTERLY REVIEW', startTime: 0, duration: 5, x: 300, y: 200, fontSize: 50, color: '#003366', animation: 'slide' },
+        { type: 'text', text: 'GROWTH +15%', startTime: 1, duration: 4, x: 300, y: 280, fontSize: 40, color: '#28a745' }
     ]},
-    { id: 'tpl-neon-title', name: 'Neon Glitch Title', icon: 'fa-lightbulb', clips: [
-        { type: 'text', text: 'FUTURISTIC', startTime: 0, duration: 3, x: 640, y: 360, fontSize: 120, textType: 'neon', animation: 'glitch', color: '#ff00ff' }
+    { id: 'tpl-travel', name: 'Travel Vlog', icon: 'fa-plane', bg: 'https://picsum.photos/seed/travel/1280/720', clips: [
+        { type: 'text', text: 'EXPLORE ICELAND', startTime: 0, duration: 5, x: 640, y: 600, fontSize: 70, textType: 'shadow', color: '#ffffff', animation: 'zoom' },
+        { type: 'text', text: 'DAY 12: THE GLACIERS', startTime: 1, duration: 4, x: 640, y: 670, fontSize: 30, color: '#f8f9fa' }
+    ]},
+    { id: 'tpl-gaming', name: 'Pro Streamer', icon: 'fa-gamepad', bg: 'https://picsum.photos/seed/gaming/1280/720', clips: [
+        { type: 'text', text: 'LIVE NOW', startTime: 0, duration: 10, x: 150, y: 80, fontSize: 40, textType: 'neon', color: '#ff0000', animation: 'glitch' },
+        { type: 'text', text: '@GAMER_TAG', startTime: 0, duration: 10, x: 1100, y: 680, fontSize: 30, color: '#ffffff' }
+    ]},
+    { id: 'tpl-space', name: 'Space Odyssey', icon: 'fa-rocket', bg: 'https://picsum.photos/seed/space/1280/720', clips: [
+        { type: 'text', text: 'BEYOND STARS', startTime: 0, duration: 7, x: 640, y: 360, fontSize: 90, textType: 'glass', color: '#e0e0e0', animation: 'pulse' },
+        { type: 'text', text: 'MISSION: MARS', startTime: 2, duration: 5, x: 640, y: 460, fontSize: 35, color: '#ffaa00' }
+    ]},
+    { id: 'tpl-minimal', name: 'Minimalist Portfolio', icon: 'fa-user', bg: 'https://picsum.photos/seed/minimal/1280/720', clips: [
+        { type: 'text', text: 'JOHN DOE', startTime: 0, duration: 5, x: 640, y: 320, fontSize: 60, color: '#000000', animation: 'fade' },
+        { type: 'text', text: 'CREATIVE DIRECTOR', startTime: 1, duration: 4, x: 640, y: 400, fontSize: 25, color: '#666666' }
+    ]},
+    { id: 'tpl-fitness', name: 'Workout Power', icon: 'fa-dumbbell', bg: 'https://picsum.photos/seed/gym/1280/720', clips: [
+        { type: 'text', text: 'NO LIMITS', startTime: 0, duration: 5, x: 640, y: 360, fontSize: 120, textType: 'shadow', color: '#ffffff', animation: 'shake' },
+        { type: 'text', text: 'PUSH YOUR BOUNDARIES', startTime: 1, duration: 4, x: 640, y: 480, fontSize: 40, color: '#ffc107' }
+    ]},
+    { id: 'tpl-food', name: 'Chef Special', icon: 'fa-utensils', bg: 'https://picsum.photos/seed/food/1280/720', clips: [
+        { type: 'text', text: 'SECRET PASTA RECIPE', startTime: 0, duration: 5, x: 640, y: 100, fontSize: 60, textType: 'gradient', color: '#ff4400', animation: 'fade' },
+        { type: 'text', text: 'WITH FRESH BASIL', startTime: 1, duration: 4, x: 640, y: 180, fontSize: 35, color: '#28a745' }
+    ]},
+    { id: 'tpl-wedding', name: 'Wedding Grace', icon: 'fa-heart', bg: 'https://picsum.photos/seed/wedding/1280/720', clips: [
+        { type: 'text', text: 'SARAH & MARK', startTime: 0, duration: 6, x: 640, y: 360, fontSize: 80, color: '#ffffff', animation: 'zoom' },
+        { type: 'text', text: 'JUNE 24TH, 2026', startTime: 2, duration: 4, x: 640, y: 450, fontSize: 30, color: '#fce4ec' }
+    ]},
+    { id: 'tpl-music', name: 'Music Pulse', icon: 'fa-music', bg: 'https://picsum.photos/seed/music/1280/720', clips: [
+        { type: 'text', text: 'BEAT DROP', startTime: 0, duration: 5, x: 640, y: 360, fontSize: 100, textType: 'neon', color: '#00ff00', animation: 'pulse' },
+        { type: 'text', text: 'VOLUME MAX', startTime: 1, duration: 4, x: 640, y: 480, fontSize: 40, color: '#ffffff', animation: 'shake' }
+    ]},
+    { id: 'tpl-tech', name: 'Tech Review', icon: 'fa-laptop', bg: 'https://picsum.photos/seed/tech/1280/720', clips: [
+        { type: 'text', text: 'NEXT-GEN LAPTOP', startTime: 0, duration: 5, x: 200, y: 200, fontSize: 50, color: '#007bff', animation: 'typewriter' },
+        { type: 'text', text: 'FASTER THAN EVER', startTime: 1, duration: 4, x: 200, y: 270, fontSize: 30, color: '#ffffff' }
+    ]},
+    { id: 'tpl-horror', name: 'Horror Night', icon: 'fa-ghost', bg: 'https://picsum.photos/seed/scary/1280/720', clips: [
+        { type: 'text', text: 'DON\'T LOOK BACK', startTime: 0, duration: 5, x: 640, y: 360, fontSize: 90, textType: 'shadow', color: '#ff0000', animation: 'glitch' },
+        { type: 'text', text: 'COMING SOON', startTime: 2, duration: 3, x: 640, y: 500, fontSize: 40, color: '#444444' }
+    ]},
+    { id: 'tpl-kids', name: 'Kids Fun', icon: 'fa-child', bg: 'https://picsum.photos/seed/kids/1280/720', clips: [
+        { type: 'text', text: 'HAPPY TIME!', startTime: 0, duration: 5, x: 640, y: 300, fontSize: 100, textType: 'gradient', color: '#ffcc00', animation: 'bounce' },
+        { type: 'text', text: 'LET\'S PLAY TOGETHER', startTime: 1, duration: 4, x: 640, y: 450, fontSize: 40, color: '#00ccff' }
+    ]},
+    { id: 'tpl-archi', name: 'Modern Living', icon: 'fa-building', bg: 'https://picsum.photos/seed/house/1280/720', clips: [
+        { type: 'text', text: 'URBAN LOFT', startTime: 0, duration: 5, x: 1000, y: 200, fontSize: 60, textType: 'glass', color: '#ffffff', animation: 'fade' },
+        { type: 'text', text: 'NEW YORK CITY', startTime: 1, duration: 4, x: 1000, y: 280, fontSize: 30, color: '#cccccc' }
+    ]},
+    { id: 'tpl-art', name: 'Abstract Art', icon: 'fa-palette', bg: 'https://picsum.photos/seed/art/1280/720', clips: [
+        { type: 'text', text: 'COLOR SPECTRUM', startTime: 0, duration: 5, x: 640, y: 360, fontSize: 90, textType: 'gradient', color: '#ff00ff', animation: 'rainbow' },
+        { type: 'text', text: 'GALLERY EXHIBIT', startTime: 1, duration: 4, x: 640, y: 480, fontSize: 35, color: '#ffffff' }
+    ]},
+    { id: 'tpl-news', name: 'Breaking News', icon: 'fa-newspaper', bg: 'https://picsum.photos/seed/news/1280/720', clips: [
+        { type: 'text', text: 'BREAKING NEWS', startTime: 0, duration: 10, x: 640, y: 650, fontSize: 80, color: '#ffffff', animation: 'fade' },
+        { type: 'text', text: 'DEVELOPING STORY: AI TAKEOVER', startTime: 2, duration: 8, x: 640, y: 550, fontSize: 40, color: '#ff0000', animation: 'typewriter' }
+    ]},
+    { id: 'tpl-fashion', name: 'Fashion Lookbook', icon: 'fa-tshirt', bg: 'https://picsum.photos/seed/fashion/1280/720', clips: [
+        { type: 'text', text: 'VOGUE STYLE', startTime: 0, duration: 5, x: 300, y: 400, fontSize: 70, textType: 'glass', color: '#000000', animation: 'fade' },
+        { type: 'text', text: 'WINTER COLLECTION', startTime: 1, duration: 4, x: 300, y: 480, fontSize: 30, color: '#333333' }
+    ]},
+    { id: 'tpl-doc', name: 'Wild Safari', icon: 'fa-paw', bg: 'https://picsum.photos/seed/safari/1280/720', clips: [
+        { type: 'text', text: 'THE KINGDOM', startTime: 0, duration: 8, x: 640, y: 100, fontSize: 70, textType: 'shadow', color: '#ffffff', animation: 'zoom' },
+        { type: 'text', text: 'EXPLORING THE SAVANNAH', startTime: 2, duration: 6, x: 640, y: 180, fontSize: 35, color: '#e0e0e0' }
     ]}
 ];
 
@@ -1324,7 +1370,6 @@ function initTemplates() {
             <div class="name">${tpl.name}</div>
         `;
         card.onclick = () => {
-            state.lastPressedElementId = tpl.id;
             // Demo on preview
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#111';
@@ -1335,6 +1380,45 @@ function initTemplates() {
             ctx.fillText("PREVIEW: " + tpl.name, 640, 360);
         };
         card.ondblclick = () => {
+            // Add background if exists
+            if (tpl.bg) {
+                const bgId = 'asset-bg-' + Math.random().toString(36).substr(2, 9);
+                const bgImg = new Image();
+                bgImg.crossOrigin = "anonymous";
+                bgImg.src = tpl.bg;
+                bgImg.onload = () => {
+                    const asset = {
+                        id: bgId,
+                        name: tpl.name + ' BG',
+                        type: 'image',
+                        url: tpl.bg,
+                        duration: 10,
+                        element: bgImg
+                    };
+                    state.mediaAssets.push(asset);
+
+                    const bgClip = {
+                        id: 'clip-' + Math.random().toString(36).substr(2, 9),
+                        assetId: bgId,
+                        type: 'image',
+                        track: 'video',
+                        trackId: 'video-1',
+                        startTime: state.currentTime,
+                        duration: 10,
+                        offset: 0,
+                        filters: { brightness: 100, contrast: 100, grayscale: 0, sepia: 0, blur: 0 },
+                        volume: 100,
+                        x: 0,
+                        y: 0,
+                        scale: 1
+                    };
+                    state.timelineClips.push(bgClip);
+                    updateDuration();
+                    renderTimeline();
+                    renderPreview();
+                };
+            }
+
             tpl.clips.forEach(c => {
                 const clip = {
                     id: 'clip-' + Math.random().toString(36).substr(2, 9),
@@ -1456,6 +1540,15 @@ fmtBold.onclick = () => {
     }
 };
 
+fmtUnderline.onclick = () => {
+    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
+    if (clip && clip.type === 'text') {
+        clip.isUnderline = !clip.isUnderline;
+        fmtUnderline.classList.toggle('active', clip.isUnderline);
+        renderPreview();
+    }
+};
+
 fmtItalic.onclick = () => {
     const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
     if (clip && clip.type === 'text') {
@@ -1474,6 +1567,91 @@ fmtType.onchange = () => {
 };
 
 // --- Subtitles Logic ---
+const subtitlesLibrary = [
+    { id: 'sub-netflix', name: 'Netflix Classic', type: 'text', fontSize: 35, color: '#ffffff', textType: 'shadow', animation: 'fade' },
+    { id: 'sub-yellow', name: 'Cinematic Yellow', type: 'text', fontSize: 35, color: '#ffff00', textType: 'outline', animation: 'slide' },
+    { id: 'sub-glitch', name: 'Cyber Glitch', type: 'text', fontSize: 40, color: '#00f3ff', textType: 'neon', animation: 'glitch' },
+    { id: 'sub-flicker', name: 'Neon Flicker', type: 'text', fontSize: 38, color: '#ff00ff', textType: 'neon', animation: 'pulse' },
+    { id: 'sub-karaoke', name: 'Karaoke Wave', type: 'text', fontSize: 45, color: '#ffffff', textType: 'gradient', animation: 'bounce' },
+    { id: 'sub-modern', name: 'Modern Sans', type: 'text', fontSize: 30, color: '#ffffff', textType: 'plain', animation: 'fade' },
+    { id: 'sub-bold', name: 'Bold Impact', type: 'text', fontSize: 50, color: '#ffffff', textType: 'outline', animation: 'zoom' },
+    { id: 'sub-glass', name: 'Glass Overlay', type: 'text', fontSize: 35, color: 'rgba(255,255,255,0.8)', textType: 'glass', animation: 'fade' },
+    { id: 'sub-gradient', name: 'Rainbow Pulse', type: 'text', fontSize: 40, color: '#00ff00', textType: 'gradient', animation: 'rainbow' },
+    { id: 'sub-minimal', name: 'Minimal White', type: 'text', fontSize: 24, color: '#ffffff', textType: 'plain', animation: 'fade' }
+];
+
+function showSubtitles() {
+    renderSubtitlesList();
+}
+
+function renderSubtitlesList(query = '') {
+    const grid = document.getElementById('subtitles-grid');
+    if(!grid) return;
+    grid.innerHTML = '';
+    const filtered = subtitlesLibrary.filter(s => s.name.toLowerCase().includes(query.toLowerCase()));
+
+    filtered.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'effect-card';
+        card.innerHTML = `
+            <div class="icon"><i class="fas fa-closed-captioning"></i></div>
+            <div class="name">${s.name}</div>
+        `;
+        card.onclick = () => {
+            // Demo on preview
+            renderPreview();
+            ctx.save();
+            ctx.font = `${s.fontSize}px Orbitron`;
+            ctx.fillStyle = s.color;
+            ctx.textAlign = 'center';
+            ctx.fillText("SUBTITLE DEMO: " + s.name, 640, 600);
+            ctx.restore();
+
+            // If a text clip is selected, apply this style to it
+            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
+            if (clip && clip.type === 'text') {
+                clip.fontSize = s.fontSize;
+                clip.color = s.color;
+                clip.textType = s.textType;
+                clip.animation = s.animation;
+                renderPreview();
+                updateUIForSelectedClip();
+            }
+        };
+        card.ondblclick = () => {
+            const clip = {
+                id: 'clip-' + Math.random().toString(36).substr(2, 9),
+                assetId: null,
+                type: 'text',
+                track: 'video',
+                trackId: 'video-2',
+                startTime: state.currentTime,
+                duration: 4,
+                offset: 0,
+                filters: { brightness: 100, contrast: 100, grayscale: 0, sepia: 0, blur: 0 },
+                volume: 100,
+                text: "Your Subtitle Text Here",
+                fontSize: s.fontSize,
+                color: s.color,
+                textType: s.textType,
+                animation: s.animation,
+                x: 640,
+                y: 600,
+                scale: 1
+            };
+            state.timelineClips.push(clip);
+            updateDuration();
+            renderTimeline();
+            renderPreview();
+            selectClip(clip.id);
+        };
+        grid.appendChild(card);
+    });
+}
+
+document.getElementById('search-subtitles').oninput = (e) => {
+    renderSubtitlesList(e.target.value);
+};
 
 // --- Search Bars ---
 document.getElementById('search-media').oninput = (e) => {
@@ -1605,16 +1783,27 @@ document.getElementById('split-btn').onclick = () => {
         const newClip = { ...JSON.parse(JSON.stringify(clip)), id: 'clip-' + Math.random().toString(36).substr(2, 9), startTime: state.currentTime, duration: clip.duration - splitPoint, offset: (clip.offset || 0) + splitPoint };
         clip.duration = splitPoint;
         state.timelineClips.push(newClip);
+        state.lastPressedElementId = newClip.id; // Track split part as well
         renderTimeline();
     }
 };
 
 document.getElementById('delete-btn').onclick = () => {
     if (state.lastPressedElementId) {
-        state.timelineClips = state.timelineClips.filter(c => c.id !== state.lastPressedElementId);
-        if (state.selectedClipId === state.lastPressedElementId) selectClip(null);
-        state.lastPressedElementId = null;
-        updateDuration(); renderTimeline(); renderPreview(); syncAudio();
+        // Ensure we only delete from timelineClips
+        const index = state.timelineClips.findIndex(c => c.id === state.lastPressedElementId);
+        if (index !== -1) {
+            state.timelineClips.splice(index, 1);
+            if (state.selectedClipId === state.lastPressedElementId) {
+                state.selectedClipId = null;
+                updateUIForSelectedClip();
+            }
+            state.lastPressedElementId = null;
+            updateDuration();
+            renderTimeline();
+            renderPreview();
+            syncAudio();
+        }
     }
 };
 
