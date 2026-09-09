@@ -1,1576 +1,1332 @@
-        // app.js - WonderClone Filmora Futuristic Edition
+/**
+ * RACE SURVIVAL: ARENA KING - 3D FLYING CAR GAME ENGINE
+ */
 
-const state = {
-    mediaAssets: [],
-    audioAssets: [],
-    timelineClips: [], // Both video and audio clips
-    currentTime: 0,
-    duration: 0,
-    isPlaying: false,
-    selectedClipId: null,
-    zoomLevel: 100,
-    masterVolume: 100,
-    playerModel: 'default',
-    transitionSpeed: 0.5,
-    transitionContrast: 100,
-    aspectRatio: '16/9',
-    viewMode: 'fit',
-    themeStyle: 'neon'
+// Global State & Save Data Management
+const gameState = {
+    coins: 1000,
+    selectedCarIndex: 0,
+    selectedMode: 'survival', // 'survival', 'race', 'stunt'
+    soundEnabled: true,
+    score: 0,
+    wave: 1,
+    kills: 0,
+    checkpointsPassed: 0,
+    totalRings: 12,
+    isPaused: false,
+    isGameOver: false,
+    unlockedCars: [true, false, false, false],
+    carUpgrades: [
+        { speed: 1, armor: 1, boost: 1, flight: 1 },
+        { speed: 1, armor: 1, boost: 1, flight: 1 },
+        { speed: 1, armor: 1, boost: 1, flight: 1 },
+        { speed: 1, armor: 1, boost: 1, flight: 1 }
+    ],
+    carPaints: [
+        { body: '#00e5ff', neon: '#ff007f' },
+        { body: '#ff0055', neon: '#ffe600' },
+        { body: '#00ff66', neon: '#00f3ff' },
+        { body: '#9d00ff', neon: '#00ffff' }
+    ]
 };
 
-const mediaGrid = document.getElementById('media-grid');
-const importBtn = document.getElementById('import-btn');
-const emptyMsg = document.querySelector('.empty-msg');
-const timeline = document.getElementById('timeline');
-const videoTrack1 = document.getElementById('video-track-1');
-const videoTrack2 = document.getElementById('video-track-2');
-const audioTrack = document.getElementById('audio-track');
-const playhead = document.getElementById('playhead');
-const playPauseBtn = document.getElementById('play-pause');
-const canvas = document.getElementById('preview-canvas');
-const ctx = canvas.getContext('2d');
-const timestampDisplay = document.getElementById('timestamp');
-const zoomInput = document.getElementById('timeline-zoom');
-const playerModelSelect = document.getElementById('player-model-select');
-const previewContainer = document.getElementById('main-preview-container');
-const aspectRatioSelect = document.getElementById('aspect-ratio-select');
-const viewModeSelect = document.getElementById('view-mode-select');
-const styleButtons = document.querySelectorAll('.style-btn');
-const clipTransformControls = document.getElementById('clip-transform-controls');
-const clipXInput = document.getElementById('clip-x');
-const clipYInput = document.getElementById('clip-y');
-const adobeTextEditor = document.getElementById("adobe-text-editor");
-const clipScaleInput = document.getElementById('clip-scale');
-
-canvas.width = 1280;
-canvas.height = 720;
-
-let isDraggingCanvas = false;
-let draggedClip = null;
-let dragStartX, dragStartY;
-let clipStartX, clipStartY;
-
-canvas.onmousedown = (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const mouseX = (e.clientX - rect.left) * scaleX;
-    const mouseY = (e.clientY - rect.top) * scaleY;
-
-    const activeClips = state.timelineClips.filter(c =>
-        (c.type === 'video' || c.type === 'image' || c.type === 'text') &&
-        state.currentTime >= c.startTime &&
-        state.currentTime < (c.startTime + c.duration)
-    ).reverse();
-
-    for (const clip of activeClips) {
-        let isHit = false;
-        if (clip.type === 'text') {
-            ctx.font = `${clip.fontSize || 60}px Orbitron`;
-            const textWidth = ctx.measureText(clip.text).width;
-            const fontSize = parseInt(clip.fontSize) || 60;
-            const padding = 20;
-
-            const x = clip.x !== undefined ? clip.x : canvas.width/2;
-            const y = clip.y !== undefined ? clip.y : canvas.height/2;
-
-            const left = x - textWidth/2 - padding;
-            const right = x + textWidth/2 + padding;
-            const top = y - fontSize/2 - padding;
-            const bottom = y + fontSize/2 + padding;
-
-            if (mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom) {
-                isHit = true;
-            }
-        } else {
-            const cw = canvas.width, ch = canvas.height;
-            const x = clip.x || 0;
-            const y = clip.y || 0;
-            const scale = clip.scale || 1;
-
-            const left = cw/2 + x - (cw/2 * scale);
-            const right = cw/2 + x + (cw/2 * scale);
-            const top = ch/2 + y - (ch/2 * scale);
-            const bottom = ch/2 + y + (ch/2 * scale);
-
-            if (mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom) {
-                isHit = true;
-            }
-        }
-
-        if (isHit) {
-            isDraggingCanvas = true;
-            draggedClip = clip;
-            dragStartX = mouseX;
-            dragStartY = mouseY;
-            clipStartX = clip.x || 0;
-            clipStartY = clip.y || 0;
-            selectClip(clip.id);
-            return;
-        }
-    }
-    selectClip(null);
-};
-
-window.addEventListener('mousemove', (e) => {
-    if (!isDraggingCanvas || !draggedClip) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const mouseX = (e.clientX - rect.left) * scaleX;
-    const mouseY = (e.clientY - rect.top) * scaleY;
-
-    const dx = mouseX - dragStartX;
-    const dy = mouseY - dragStartY;
-
-    draggedClip.x = Math.round(clipStartX + dx);
-    draggedClip.y = Math.round(clipStartY + dy);
-
-    updateUIForSelectedClip();
-    renderPreview();
-});
-
-window.addEventListener('mouseup', () => {
-    isDraggingCanvas = false;
-    draggedClip = null;
-});
-
-function selectClip(clipId) {
-    state.selectedClipId = clipId;
-    renderTimeline();
-    updateUIForSelectedClip();
-}
-
-function updateUIForSelectedClip() {
-    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-    if (!clip) {
-        clipTransformControls.style.display = 'none';
-        return;
-    }
-
-    clipTransformControls.style.display = 'block';
-    clipXInput.value = clip.x || 0;
-    clipYInput.value = clip.y || 0;
-    clipScaleInput.value = clip.scale || 1;
-
-    if (clip.type === 'text') {
-        updateTitleInputs(clip);
-    }
-}
-
-clipXInput.oninput = (e) => {
-    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-    if (clip) {
-        clip.x = parseInt(e.target.value);
-        renderPreview();
-    }
-};
-
-clipYInput.oninput = (e) => {
-    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-    if (clip) {
-        clip.y = parseInt(e.target.value);
-        renderPreview();
-    }
-};
-
-clipScaleInput.oninput = (e) => {
-    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-    if (clip) {
-        clip.scale = parseFloat(e.target.value);
-        renderPreview();
-    }
-};
-
-// --- Tab System ---
-const tabs = document.querySelectorAll('.tab');
-const panels = {
-    media: document.getElementById('media-library'),
-    titles: document.getElementById('titles-panel'),
-    audio: document.getElementById('audio-panel'),
-    effects: null, // created dynamically
-    transitions: document.getElementById('transitions-panel')
-};
-
-tabs.forEach(tab => {
-    tab.onclick = () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-
-        Object.keys(panels).forEach(key => {
-            if (panels[key]) panels[key].style.display = 'none';
-        });
-
-        const target = tab.dataset.tab;
-        if (target === 'effects') {
-            showEffects();
-        } else if (panels[target]) {
-            panels[target].style.display = 'block';
-            if (effectsPanel) effectsPanel.style.display = 'none';
-            if (target === 'transitions') showTransitions();
-        }
-    };
-});
-
-// --- Preview Side Controls ---
-playerModelSelect.onchange = (e) => {
-    const model = e.target.value;
-    previewContainer.className = 'preview-container ' + model;
-    state.playerModel = model;
-};
-
-aspectRatioSelect.onchange = (e) => {
-    state.aspectRatio = e.target.value;
-    const [w, h] = state.aspectRatio.split('/').map(Number);
-    previewContainer.style.aspectRatio = state.aspectRatio;
-
-    // Update canvas resolution based on aspect ratio
-    if (w / h >= 16 / 9) {
-        canvas.width = 1280;
-        canvas.height = 1280 / (w / h);
-    } else {
-        canvas.height = 720;
-        canvas.width = 720 * (w / h);
-    }
-
-    renderPreview();
-};
-
-viewModeSelect.onchange = (e) => {
-    state.viewMode = e.target.value;
-    renderPreview();
-};
-
-styleButtons.forEach(btn => {
-    btn.onclick = () => {
-        styleButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const style = btn.dataset.style;
-        state.themeStyle = style;
-
-        // Remove old style classes
-        document.body.classList.remove('style-neon', 'style-gold', 'style-ghost', 'style-matrix');
-        // Add new one
-        document.body.classList.add('style-' + style);
-    };
-});
-
-// --- Media Logic ---
-function createMediaItem(file, existingAsset = null) {
-    const asset = {
-        id: "asset-" + Math.random().toString(36).substr(2, 9),
-        name: file.name,
-        type: file.type.startsWith("video") ? "video" : "image",
-        url: URL.createObjectURL(file),
-        duration: file.type.startsWith("video") ? 0 : 5,
-        element: null
-    };
-    const isVideo = asset.type === 'video';
-
-    const mediaItem = document.createElement('div');
-    mediaItem.className = 'media-item';
-    mediaItem.draggable = true;
-    mediaItem.dataset.id = asset.id;
-    mediaItem.style.position = 'relative';
-
-if (isVideo) {
-
-    mediaItem.style.border = '2px solid #00f3ff';
-
-    mediaItem.style.boxShadow =
-        '0 0 10px rgba(0,243,255,.8), ' +
-        '0 0 25px rgba(0,243,255,.6), ' +
-        '0 0 50px rgba(0,243,255,.4)';
-
-    mediaItem.style.transition = 'all .3s ease';
-
-    mediaItem.addEventListener('mouseenter', () => {
-
-        mediaItem.style.transform = 'scale(1.05)';
-
-        mediaItem.style.boxShadow =
-            '0 0 20px rgba(0,243,255,1), ' +
-            '0 0 40px rgba(0,243,255,.8), ' +
-            '0 0 80px rgba(0,243,255,.5)';
-    });
-
-    mediaItem.addEventListener('mouseleave', () => {
-
-        mediaItem.style.transform = 'scale(1)';
-
-        mediaItem.style.boxShadow =
-            '0 0 10px rgba(0,243,255,.8), ' +
-            '0 0 25px rgba(0,243,255,.6), ' +
-            '0 0 50px rgba(0,243,255,.4)';
-    });
-
-    const badge = document.createElement('div');
-    badge.textContent = 'VIDEO';
-
-    badge.style.position = 'absolute';
-    badge.style.top = '5px';
-    badge.style.right = '5px';
-    badge.style.padding = '2px 6px';
-    badge.style.borderRadius = '6px';
-    badge.style.background = '#00f3ff';
-    badge.style.color = '#000';
-    badge.style.fontSize = '10px';
-    badge.style.fontWeight = 'bold';
-
-    mediaItem.appendChild(badge);
-}
-
-    if (isVideo) {
-        const video = document.createElement('video');
-        video.src = asset.url;
-        video.muted = true;
-        video.onloadedmetadata = () => { asset.duration = video.duration; asset.element = video; };
-        mediaItem.appendChild(video);
-    } else {
-        const img = document.createElement('img');
-        img.src = asset.url;
-        img.onload = () => { asset.element = img; };
-        mediaItem.appendChild(img);
-    }
-
-    mediaItem.addEventListener('dragstart', (e) => e.dataTransfer.setData('assetId', asset.id));
-    mediaItem.addEventListener('dblclick', () => addAssetToTimeline(asset.id));
-
-    mediaGrid.appendChild(mediaItem);
-    state.mediaAssets.push(asset);
-    emptyMsg.style.display = 'none';
-}
-
-importBtn.onclick = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'video/*,image/*';
-    input.multiple = true;
-    input.onchange = (e) => Array.from(e.target.files).forEach(createMediaItem);
-    input.click();
-};
-
-// --- Timeline & Rendering ---
-function addAssetToTimeline(assetId, customClip = null, dropTime = null, targetTrackId = null) {
-    const asset = state.mediaAssets.find(a => a.id === assetId);
-    if (!asset && !customClip) return;
-
-    const clip = customClip || {
-        id: 'clip-' + Math.random().toString(36).substr(2, 9),
-        assetId: assetId,
-        type: asset.type,
-        track: asset.type === 'audio' ? 'audio' : 'video',
-        trackId: targetTrackId || (asset.type === 'audio' ? 'audio' : 'video-1'),
-        startTime: dropTime !== null ? dropTime : state.duration,
-        duration: asset.duration || 5,
-        offset: 0,
-        filters: { brightness: 100, contrast: 100, grayscale: 0, sepia: 0, blur: 0 },
-        volume: 100,
-        x: 0,
-        y: 0,
-        scale: 1,
-        text: null // For Titles
-    };
-
-    state.timelineClips.push(clip);
-    updateDuration();
-    renderTimeline();
-    renderPreview();
-}
-
-function updateDuration() {
-    state.duration = state.timelineClips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
-    updateTimestamp();
-}
-
-function renderRuler() {
-    const ruler = document.getElementById('timeline-ruler');
-    ruler.innerHTML = '';
-    const duration = Math.max(state.duration + 10, 60);
-    const step = state.zoomLevel < 50 ? 10 : (state.zoomLevel < 100 ? 5 : 1);
-
-    for (let i = 0; i < duration; i += step) {
-        const mark = document.createElement('div');
-        mark.style.position = 'absolute';
-        mark.style.left = (i * state.zoomLevel) + 'px';
-        mark.style.fontSize = '10px';
-        mark.style.color = 'var(--text-dim)';
-        mark.style.borderLeft = '1px solid rgba(255,255,255,0.2)';
-        mark.style.height = '100%';
-        mark.style.paddingLeft = '2px';
-        mark.innerText = i + 's';
-        ruler.appendChild(mark);
-    }
-}
-
-function renderTimeline() {
-    renderRuler();
-    videoTrack1.innerHTML = '';
-    videoTrack2.innerHTML = '';
-    audioTrack.innerHTML = '';
-
-    state.timelineClips.forEach(clip => {
-        const asset = state.mediaAssets.find(a => a.id === clip.assetId);
-        const clipEl = document.createElement('div');
-        clipEl.className = 'clip';
-        clipEl.addEventListener('mouseenter', () => {
-
-    clipEl.style.boxShadow =
-        '0 0 15px rgba(0,243,255,1), ' +
-        '0 0 35px rgba(0,243,255,.8), ' +
-        '0 0 60px rgba(0,243,255,.5)';
-});
-
-clipEl.addEventListener('mouseleave', () => {
-
-    clipEl.style.boxShadow =
-        '0 0 10px rgba(0,243,255,.8), ' +
-        '0 0 20px rgba(0,243,255,.6), ' +
-        '0 0 40px rgba(0,243,255,.4)';
-});
-        if (state.selectedClipId === clip.id) clipEl.classList.add('active');
-        clipEl.style.left = (clip.startTime * state.zoomLevel) + 'px';
-        clipEl.style.width = (clip.duration * state.zoomLevel) + 'px';
-        clipEl.innerHTML = `
-            <div class="clip-handle clip-handle-left"></div>
-            <div class="clip-title">${clip.text ? 'T: ' + clip.text : (asset ? asset.name : 'Clip')}${clip.transition ? ' [TR]' : ''}</div>
-            <div class="clip-handle clip-handle-right"></div>
-        `;
-
-        clipEl.onclick = (e) => {
-            e.stopPropagation();
-            selectClip(clip.id);
-            if (effectsPanel && effectsPanel.style.display === 'block') updateEffectsSliders();
-        };
-
-        // Handles & Dragging
-        clipEl.onmousedown = (e) => {
-            if (e.button !== 0) return;
-            e.stopPropagation();
-
-            const isLeftHandle = e.target.classList.contains('clip-handle-left');
-            const isRightHandle = e.target.classList.contains('clip-handle-right');
-            const startX = e.clientX;
-            const startStart = clip.startTime;
-            const startDuration = clip.duration;
-            const startOffset = clip.offset;
-
-            const move = (m) => {
-                const diff = (m.clientX - startX) / state.zoomLevel;
-
-                if (isLeftHandle) {
-                    const newStart = Math.max(0, startStart + diff);
-                    const actualDiff = newStart - startStart;
-                    if (startDuration - actualDiff > 0.1) {
-                        clip.startTime = newStart;
-                        clip.offset = startOffset + actualDiff;
-                        clip.duration = startDuration - actualDiff;
-                    }
-                } else if (isRightHandle) {
-                    clip.duration = Math.max(0.1, startDuration + diff);
-                } else {
-                    clip.startTime = Math.max(0, startStart + diff);
-
-                    // Track switching during drag
-                    const rect = timeline.getBoundingClientRect();
-                    const y = m.clientY - rect.top;
-                    if (clip.track === 'video') {
-                        if (y > 30 && y <= 100) clip.trackId = 'video-1';
-                        else if (y > 100 && y <= 170) clip.trackId = 'video-2';
-                    } else if (clip.track === 'audio') {
-                        if (y > 170) clip.trackId = 'audio';
-                    }
-                }
-
-                clipEl.style.left = (clip.startTime * state.zoomLevel) + 'px';
-                clipEl.style.width = (clip.duration * state.zoomLevel) + 'px';
-                updateDuration();
-                renderPreview();
-            };
-
-            const up = () => {
-                document.removeEventListener('mousemove', move);
-                document.removeEventListener('mouseup', up);
-                renderTimeline();
-            };
-
-            document.addEventListener('mousemove', move);
-            document.addEventListener('mouseup', up);
-        };
-
-        if (clip.trackId === 'audio') audioTrack.appendChild(clipEl);
-        else if (clip.trackId === 'video-1') videoTrack1.appendChild(clipEl);
-        else if (clip.trackId === 'video-2') videoTrack2.appendChild(clipEl);
-        else videoTrack1.appendChild(clipEl); // Fallback
-    });
-
-    timeline.style.width = Math.max(window.innerWidth, (state.duration + 10) * state.zoomLevel) + 'px';
-}
- function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
-
-    const words = text.split(' ');
-    const lines = [];
-    let line = '';
-
-    for (let n = 0; n < words.length; n++) {
-
-        const testLine = line + words[n] + ' ';
-        const metrics = ctx.measureText(testLine);
-
-        if (metrics.width > maxWidth && n > 0) {
-            lines.push(line);
-            line = words[n] + ' ';
-        } else {
-            line = testLine;
-        }
-    }
-
-    lines.push(line);
-
-    const startY =
-        y -
-        ((lines.length - 1) * lineHeight) / 2;
-
-    lines.forEach((l, i) => {
-        ctx.fillText(
-            l,
-            x,
-            startY + i * lineHeight
-        );
-    });
-}
-function renderPreview() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const activeClips = state.timelineClips
-        .filter(c => c.track === 'video' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration))
-        .sort((a, b) => {
-            const trackOrder = { 'video-1': 1, 'video-2': 2 };
-            const orderA = trackOrder[a.trackId] || 1;
-            const orderB = trackOrder[b.trackId] || 1;
-            if (orderA !== orderB) return orderA - orderB;
-            return a.startTime - b.startTime;
-        });
-
-    activeClips.forEach(clip => {
-        const asset = state.mediaAssets.find(a => a.id === clip.assetId);
-
-        let alpha = 1.0;
-        const transitionDuration = parseFloat(state.transitionSpeed);
-        if (state.currentTime < clip.startTime + transitionDuration) {
-            alpha = (state.currentTime - clip.startTime) / transitionDuration;
-        } else if (state.currentTime > (clip.startTime + clip.duration) - transitionDuration) {
-            alpha = ((clip.startTime + clip.duration) - state.currentTime) / transitionDuration;
-        }
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-
-        if (asset && asset.element) {
-            let filterString = `brightness(${clip.filters.brightness}%) contrast(${clip.filters.contrast}%) grayscale(${clip.filters.grayscale}%) sepia(${clip.filters.sepia}%) blur(${clip.filters.blur}px)`;
-            if (alpha < 1.0) filterString += ` contrast(${state.transitionContrast}%)`;
-            ctx.filter = filterString;
-
-            const drawFrame = (element) => {
-                let dx = 0, dy = 0, dw = canvas.width, dh = canvas.height;
-                const cw = canvas.width, ch = canvas.height;
-                const iw = element.videoWidth || element.width;
-                const ih = element.videoHeight || element.height;
-                const aspect = iw / ih;
-                const canvasAspect = cw / ch;
-
-                if (state.viewMode === 'fit') {
-                    if (aspect > canvasAspect) {
-                        dh = cw / aspect;
-                        dy = (ch - dh) / 2;
-                    } else {
-                        dw = ch * aspect;
-                        dx = (cw - dw) / 2;
-                    }
-                } else if (state.viewMode === 'fill') {
-                    if (aspect > canvasAspect) {
-                        dw = ch * aspect;
-                        dx = (cw - dw) / 2;
-                    } else {
-                        dh = cw / aspect;
-                        dy = (ch - dh) / 2;
-                    }
-                }
-
-                ctx.save();
-                ctx.translate(cw/2 + (clip.x || 0), ch/2 + (clip.y || 0));
-                ctx.scale(clip.scale || 1, clip.scale || 1);
-                ctx.translate(-cw/2, -ch/2);
-                ctx.drawImage(element, dx, dy, dw, dh);
-                ctx.restore();
-            };
-
-            if (asset.type === 'video') {
-                const vid = asset.element;
-                const time = (state.currentTime - clip.startTime) + clip.offset;
-                if (Math.abs(vid.currentTime - time) > 0.1) vid.currentTime = time;
-                drawFrame(vid);
-            } else {
-                drawFrame(asset.element);
-            }
-        }
-
-        if (clip.text) {
-            ctx.filter = 'none';
-            const fontSize = parseInt(clip.fontSize) || 60;
-            ctx.font = `${fontSize}px Orbitron`;
-            ctx.fillStyle = clip.color || '#00f3ff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            let textToDraw = clip.text;
-            let drawAlpha = 1.0;
-            let currentX = clip.x !== undefined ? clip.x : canvas.width/2;
-            let currentY = clip.y !== undefined ? clip.y : canvas.height/2;
-            let currentScale = clip.scale || 1.0;
-
-            const elapsed = state.currentTime - clip.startTime;
-            const animType = clip.animation || 'none';
-            if(animType === 'bounce'){
-    currentY += Math.sin(elapsed * 8) * 20;
-}
-
-if(animType === 'rotate'){
-    ctx.rotate(Math.sin(elapsed * 2) * 0.15);
-}
-
-if(animType === 'glow'){
-    ctx.shadowBlur =
-        20 +
-        Math.sin(elapsed * 5) * 15;
-}
-
-if(animType === 'wave'){
-    currentY += Math.sin(elapsed * 6) * 10;
-    currentX += Math.cos(elapsed * 6) * 10;
-}
-
-if(animType === 'float'){
-    currentY -= elapsed * 15;
-}
-
-            if (animType === 'fade') {
-                drawAlpha = Math.min(1, elapsed / 1);
-            } else if (animType === 'slide') {
-                const offset = Math.max(0, 1 - elapsed) * 100;
-                currentY += offset;
-            } else if (animType === 'typewriter') {
-                const chars = Math.floor(elapsed * 35);
-                textToDraw = clip.text.substring(0, chars);
-            } else if (animType === 'zoom') {
-                currentScale *= Math.min(1, elapsed / 1);
-            }
-
-            ctx.save();
-            ctx.globalAlpha = drawAlpha * ctx.globalAlpha;
-            ctx.translate(currentX, currentY);
-            ctx.scale(currentScale, currentScale);
-            ctx.translate(-currentX, -currentY);
-
-            const textWidth = ctx.measureText(textToDraw).width;
-            const padding = 20;
-
-            if (clip.mode === 'speech' || clip.mode === 'thought') {
-                ctx.strokeStyle = clip.color || '#00f3ff';
-                ctx.lineWidth = 5;
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-
-                if (clip.mode === 'speech') {
-                    const bx = currentX - textWidth/2 - padding;
-                    const by = currentY - fontSize/2 - padding;
-                    const bw = textWidth + padding*2;
-                    const bh = fontSize + padding*2;
-                    drawRoundedRect(ctx, bx, by, bw, bh, 15);
-                    ctx.fill();
-                    ctx.stroke();
-                    ctx.beginPath();
-                    ctx.moveTo(currentX - 20, by + bh);
-                    ctx.lineTo(currentX, by + bh + 30);
-                    ctx.lineTo(currentX + 20, by + bh);
-                    ctx.fill();
-                    ctx.stroke();
-                } else if (clip.mode === 'thought') {
-                    drawCloud(ctx, currentX, currentY, textWidth + padding*2, fontSize + padding*2);
-                }
-            }
-
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = clip.color || '#00f3ff';
-            drawWrappedText(
-    ctx,
-    textToDraw,
-    currentX,
-    currentY,
-    canvas.width * 0.8,
-    fontSize * 1.3
-);
-            ctx.restore();
-        }
-    });
-
-    ctx.globalAlpha = 1.0;
-    ctx.filter = 'none';
-}
-
-function drawRoundedRect(ctx, x, y, width, height, radius) {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-}
-
-function drawCloud(ctx, x, y, width, height) {
-    const r = height / 1.5;
-    ctx.beginPath();
-    ctx.arc(x - width/3, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x + width/3, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x, y - height/3, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x, y + height/3, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillRect(x - width/3, y - height/3, (width/3)*2, (height/3)*2);
-    ctx.beginPath();
-    ctx.arc(x - width/2, y + height/2 + 20, 10, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x - width/2 - 25, y + height/2 + 45, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-}
-
-// --- Audio Sync ---
-function syncAudio() {
-    const activeAudioClips = state.timelineClips.filter(c => c.track === 'audio' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
-
-    state.timelineClips.filter(c => c.track === 'audio').forEach(clip => {
-        const asset = state.mediaAssets.find(a => a.id === clip.assetId);
-        if (asset && asset.element) {
-            const audio = asset.element;
-            if (activeAudioClips.includes(clip) && state.isPlaying) {
-                const time = (state.currentTime - clip.startTime) + clip.offset;
-                if (Math.abs(audio.currentTime - time) > 0.1) audio.currentTime = time;
-                audio.volume = ((clip.volume || 100) / 100) * (state.masterVolume / 100);
-                if (audio.paused) audio.play();
-            } else {
-                audio.pause();
-            }
-        }
-    });
-    updateVisualizer();
-}
-
-function initVisualizer() {
-    const container = document.getElementById('visualizer-mini');
-    if(!container) return;
-    container.innerHTML = '';
-    for (let i = 0; i < 20; i++) {
-        const bar = document.createElement('div');
-        bar.className = 'visualizer-bar';
-        bar.style.height = '2px';
-        container.appendChild(bar);
-    }
-}
-
-function updateVisualizer() {
-    const bars = document.querySelectorAll('.visualizer-bar');
-    const isActive = state.isPlaying && state.timelineClips.some(c => c.track === 'audio' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
-
-    bars.forEach(bar => {
-        if (isActive) {
-            const height = Math.random() * 100;
-            bar.style.height = height + '%';
-        } else {
-            bar.style.height = '2px';
-        }
-    });
-}
-
-// --- Titles Module ---
-document.getElementById('add-title-btn').onclick = () => {
-    const text = document.getElementById('title-text').value || "NEW TITLE";
-    // Longer text = longer duration
-const autoDuration = Math.max(
-    3,
-    Math.ceil(text.length / 8)
-);
-    const size = document.getElementById('title-size').value;
-    const color = document.getElementById('title-color').value;
-    const mode = document.getElementById('title-mode').value;
-    const x = parseInt(document.getElementById('title-x').value) || 640;
-    const y = parseInt(document.getElementById('title-y').value) || 360;
-    const anim = document.getElementById('title-animation').value;
-
-    const clip = {
-        id: 'clip-' + Math.random().toString(36).substr(2, 9),
-        assetId: null,
-        type: 'text',
-        track: 'video',
-        trackId: 'video-2',
-        startTime: state.currentTime,
-        duration: autoDuration,
-        offset: 0,
-        filters: { brightness: 100, contrast: 100, grayscale: 0, sepia: 0, blur: 0 },
-        volume: 100,
-        text: text,
-        fontSize: size,
-        color: color,
-        mode: mode,
-        animation: anim,
-        x: x,
-        y: y,
-        scale: 1
-    };
-    state.timelineClips.push(clip);
-    updateDuration();
-    renderTimeline();
-    renderPreview();
-    selectClip(clip.id);
-};
-
-// --- Playback Loop ---
-let lastTime = 0;
-function playback(timestamp) {
-    if (!state.isPlaying) {
-        lastTime = 0;
-        syncAudio();
-        return;
-    }
-
-    if (!lastTime) lastTime = timestamp;
-    const delta = (timestamp - lastTime) / 1000;
-    lastTime = timestamp;
-
-    state.currentTime += delta;
-    if (state.currentTime >= state.duration) {
-        state.currentTime = state.duration;
-        pause();
-    }
-    updateTimestamp();
-    renderPreview();
-    syncAudio();
-    requestAnimationFrame(playback);
-}
-
-function play() { state.isPlaying = true; playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>'; requestAnimationFrame(playback); }
-function pause() { state.isPlaying = false; playPauseBtn.innerHTML = '<i class="fas fa-play"></i>'; syncAudio(); }
-
-playPauseBtn.onclick = () => state.isPlaying ? pause() : play();
-
-document.getElementById('prev-frame').onclick = () => {
-    pause();
-    state.currentTime = Math.max(0, state.currentTime - (1/30));
-    updateTimestamp();
-    renderPreview();
-};
-
-document.getElementById('next-frame').onclick = () => {
-    pause();
-    state.currentTime = state.currentTime + (1/30);
-    updateTimestamp();
-    renderPreview();
-};
-
-function updateTimestamp() {
-    const pad = (n) => Math.floor(n).toString().padStart(2, '0');
-    const f = (s) => `${pad(s/3600)}:${pad((s%3600)/60)}:${pad(s%60)}:${pad((s%1)*60)}`;
-    timestampDisplay.innerText = `${f(state.currentTime)} / ${f(state.duration)}`;
-    playhead.style.left = (state.currentTime * state.zoomLevel) + 'px';
-}
-
-// --- Seek & Scrubbing ---
-function seekToX(x) {
-    state.currentTime = Math.max(0, x / state.zoomLevel);
-    updateTimestamp();
-    renderPreview();
-    syncAudio();
-}
-
-timeline.ondragover = (e) => {
-    e.preventDefault();
-};
-
-timeline.ondrop = (e) => {
-    e.preventDefault();
-    const assetId = e.dataTransfer.getData('assetId');
-    if (!assetId) return;
-
-    const rect = timeline.getBoundingClientRect();
-    const x = e.clientX - rect.left + timeline.parentElement.scrollLeft;
-    const dropTime = Math.max(0, x / state.zoomLevel);
-
-    const y = e.clientY - rect.top;
-    let targetTrackId = 'video-1';
-    if (y > 30 && y <= 100) targetTrackId = 'video-1';
-    else if (y > 100 && y <= 170) targetTrackId = 'video-2';
-    else if (y > 170) targetTrackId = 'audio';
-
-    addAssetToTimeline(assetId, null, dropTime, targetTrackId);
-};
-
-timeline.onmousedown = (e) => {
-    if (e.target.classList.contains('clip') || e.target.classList.contains('clip-handle')) return;
-    const rect = timeline.getBoundingClientRect();
-
-    const scrub = (moveEvent) => {
-        const x = moveEvent.clientX - rect.left + timeline.parentElement.scrollLeft;
-        seekToX(x);
-    };
-
-    const stopScrub = () => {
-        document.removeEventListener('mousemove', scrub);
-        document.removeEventListener('mouseup', stopScrub);
-    };
-
-    const x = e.clientX - rect.left + timeline.parentElement.scrollLeft;
-    seekToX(x);
-
-    document.addEventListener('mousemove', scrub);
-    document.addEventListener('mouseup', stopScrub);
-};
-
-// --- Effects Panel ---
-let effectsPanel = null;
-const effectsLibrary = [
-    { id: 'vintage', name: 'Vintage Neural', icon: 'fa-history', type: 'filter', filters: { sepia: 80, contrast: 120 } },
-    { id: 'cyber', name: 'Cyber Neon', icon: 'fa-bolt', type: 'filter', filters: { brightness: 150, contrast: 150, blur: 2 } },
-    { id: 'noir', name: 'Noir Protocol', icon: 'fa-moon', type: 'filter', filters: { grayscale: 100, contrast: 140 } }
+// Vehicle Data Definitions
+const CAR_DATABASE = [
+    { name: 'CYBER FALCON V1', price: 0, baseSpeed: 60, baseArmor: 100, baseBoost: 100, baseFlight: 70, color: 0x00e5ff, accent: 0xff007f },
+    { name: 'TITAN PHANTOM X', price: 1500, baseSpeed: 75, baseArmor: 160, baseBoost: 120, baseFlight: 80, color: 0xff0055, accent: 0xffe600 },
+    { name: 'VENOM HYPER-FLY', price: 3000, baseSpeed: 90, baseArmor: 120, baseBoost: 150, baseFlight: 95, color: 0x00ff66, accent: 0x00f3ff },
+    { name: 'APEX OMEGA WARLORD', price: 5000, baseSpeed: 105, baseArmor: 200, baseBoost: 180, baseFlight: 110, color: 0x9d00ff, accent: 0x00ffff }
 ];
 
-for(let i=1; i<=100; i++) {
-    effectsLibrary.push({
-        id: `fx-${i}`,
-        name: `Neural Filter ${i}`,
-        icon: 'fa-magic',
-        type: 'filter',
-        filters: { brightness: 100 + (Math.random()*40-20), contrast: 100 + (Math.random()*40-20) }
-    });
-}
-
-function showEffects() {
-    if (!effectsPanel) {
-        effectsPanel = document.createElement('div');
-        effectsPanel.className = 'library-container glass';
-        effectsPanel.innerHTML = `
-            <h3>Neural FX</h3>
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" id="search-effects" placeholder="Search neural FX...">
-            </div>
-            <div class="effects-grid" id="effects-grid"></div>
-            <hr style="margin: 20px 0; opacity: 0.1;">
-            <div id="effect-controls">
-                <h3>Manual Overrides</h3>
-                ${['brightness', 'contrast', 'grayscale', 'sepia', 'blur'].map(eff => `
-                    <div class="effect-control">
-                        <label>${eff.toUpperCase()}</label>
-                        <input type="range" id="eff-${eff}" min="0" max="${eff === 'blur' ? 50 : 200}" value="100">
-                    </div>
-                `).join('')}
-            <div class="effect-control">
-                <label>VOLUME</label>
-                <input type="range" id="eff-volume" min="0" max="100" value="100">
-            </div>
-            </div>
-        `;
-        document.querySelector('.left-panel').appendChild(effectsPanel);
-
-        ['brightness', 'contrast', 'grayscale', 'sepia', 'blur'].forEach(eff => {
-            document.getElementById(`eff-${eff}`).oninput = (e) => {
-                const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-                if (clip) { clip.filters[eff] = e.target.value; renderPreview(); }
-            };
-        });
-
-        document.getElementById('title-text').oninput = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.text = e.target.value; renderPreview(); renderTimeline(); }
-        };
-        document.getElementById('title-size').oninput = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.fontSize = e.target.value; renderPreview(); }
-        };
-        document.getElementById('title-color').oninput = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.color = e.target.value; renderPreview(); }
-        };
-        document.getElementById('title-x').oninput = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.x = parseInt(e.target.value) || 0; renderPreview(); }
-        };
-        document.getElementById('title-y').oninput = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.y = parseInt(e.target.value) || 0; renderPreview(); }
-        };
-        document.getElementById('title-mode').onchange = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.mode = e.target.value; renderPreview(); }
-        };
-        document.getElementById('title-animation').onchange = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.type === 'text') { clip.animation = e.target.value; renderPreview(); }
-        };
-        document.getElementById('eff-volume').oninput = (e) => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip) { clip.volume = e.target.value; syncAudio(); }
-        };
-
-        document.getElementById('search-effects').oninput = (e) => {
-            renderEffectsList(e.target.value);
-        };
+// Sound Synthesizer via Web Audio API
+class SoundManager {
+    constructor() {
+        this.ctx = null;
+        this.engineOsc = null;
+        this.engineGain = null;
+        this.init();
     }
-    effectsPanel.style.display = 'block';
-    renderEffectsList();
-    updateEffectsSliders();
-}
-
-function renderEffectsList(query = '') {
-    const grid = document.getElementById('effects-grid');
-    if(!grid) return;
-    grid.innerHTML = '';
-    const filtered = effectsLibrary.filter(fx => fx.name.toLowerCase().includes(query.toLowerCase()));
-
-    filtered.forEach(fx => {
-        const card = document.createElement('div');
-        card.className = 'effect-card';
-        card.innerHTML = `
-            <div class="icon"><i class="fas ${fx.icon}"></i></div>
-            <div class="name">${fx.name}</div>
-        `;
-        card.onclick = () => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (!clip) return;
-
-            if (fx.type === 'filter') {
-                Object.assign(clip.filters, fx.filters);
-                updateEffectsSliders();
-            }
-            renderPreview();
-        };
-        grid.appendChild(card);
-    });
-}
-
-function updateEffectsSliders() {
-    const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-    if (clip && effectsPanel) {
-        ['brightness', 'contrast', 'grayscale', 'sepia', 'blur'].forEach(eff => {
-            const el = document.getElementById(`eff-${eff}`);
-            if(el) el.value = clip.filters[eff];
-        });
-        const volEl = document.getElementById('eff-volume');
-        if(volEl) volEl.value = clip.volume || 100;
-    }
-}
-
-function updateTitleInputs(clip) {
-    if (!clip || clip.type !== 'text') return;
-    document.getElementById('title-text').value = clip.text || '';
-    document.getElementById('title-size').value = clip.fontSize || 60;
-    document.getElementById('title-color').value = clip.color || '#00f3ff';
-    document.getElementById('title-x').value = clip.x || 0;
-    document.getElementById('title-y').value = clip.y || 0;
-    document.getElementById('title-mode').value = clip.mode || 'plain';
-    document.getElementById('title-animation').value = clip.animation || 'none';
-}
-
-// --- Transitions Module ---
-const transitionsLibrary = [
-    { id: 'trans-1', name: 'Neural Fade', icon: 'fa-adjust' },
-    { id: 'trans-2', name: 'Quantum Leap', icon: 'fa-bolt' },
-    { id: 'trans-3', name: 'Plasma Dissolve', icon: 'fa-tint' },
-    { id: 'trans-4', name: 'Static Glitch', icon: 'fa-microchip' },
-    { id: 'trans-5', name: 'Binary Shift', icon: 'fa-code' },
-    { id: 'trans-6', name: 'Warp Drive', icon: 'fa-space-shuttle' },
-    { id: 'trans-7', name: 'Neon Blur', icon: 'fa-eye' },
-    { id: 'trans-8', name: 'Cyber Wipe', icon: 'fa-columns' }
-];
-
-for(let i=9; i<=100; i++) {
-    transitionsLibrary.push({
-        id: `trans-${i}`,
-        name: `Neural Transition ${i}`,
-        icon: 'fa-random'
-    });
-}
-
-function showTransitions() {
-    renderTransitionsList();
-}
-
-function renderTransitionsList(query = '') {
-    const grid = document.getElementById('transitions-grid');
-    if(!grid) return;
-    grid.innerHTML = '';
-    const filtered = transitionsLibrary.filter(t => t.name.toLowerCase().includes(query.toLowerCase()));
-
-    filtered.forEach(t => {
-        const card = document.createElement('div');
-        card.className = 'effect-card';
-        card.innerHTML = `
-            <div class="icon"><i class="fas ${t.icon}"></i></div>
-            <div class="name">${t.name}</div>
-        `;
-        card.onclick = () => {
-            const clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-            if (clip && clip.track === 'video') {
-                clip.transition = t.id;
-                renderTimeline();
-            }
-        };
-        grid.appendChild(card);
-    });
-}
-
-document.getElementById('search-transitions').oninput = (e) => {
-    renderTransitionsList(e.target.value);
-};
-
-document.getElementById('trans-speed').oninput = (e) => {
-    state.transitionSpeed = e.target.value;
-    renderPreview();
-};
-
-document.getElementById('trans-contrast').oninput = (e) => {
-    state.transitionContrast = e.target.value;
-    renderPreview();
-};
-
-// --- Search Bars ---
-document.getElementById('search-media').oninput = (e) => {
-    const query = e.target.value.toLowerCase();
-    const items = mediaGrid.querySelectorAll('.media-item');
-    items.forEach(item => {
-        const id = item.dataset.id;
-        const asset = state.mediaAssets.find(a => a.id === id);
-        if(asset) item.style.display = asset.name.toLowerCase().includes(query) ? 'block' : 'none';
-    });
-};
-
-document.getElementById('search-audio').oninput = (e) => {
-    const query = e.target.value.toLowerCase();
-    const list = document.getElementById('audio-list');
-    const items = list.querySelectorAll('.media-item');
-    items.forEach(item => {
-        const name = item.querySelector('div').innerText.toLowerCase();
-        item.style.display = name.includes(query) ? 'block' : 'none';
-    });
-};
-
-// --- Mock 100+ Audio Tracks with Genres ---
-const genres = ["Cyberpunk", "Synthwave", "Lofi", "Cinematic"];
-const audioStreams = [
-    { name: "Glitch Matrix", genre: "Cyberpunk", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
-    { name: "Neural Override", genre: "Cyberpunk", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
-    { name: "Neon Drifter", genre: "Synthwave", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
-    { name: "Plasma Sunset", genre: "Synthwave", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" },
-    { name: "Static Chill", genre: "Lofi", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3" },
-    { name: "Bonsai Logic", genre: "Lofi", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3" },
-    { name: "Aeon Rises", genre: "Cinematic", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3" },
-    { name: "VOID Symphony", genre: "Cinematic", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" }
-];
-
-for(let i=1; i<=100; i++) {
-    audioStreams.push({
-        name: `Neural Track ${i}`,
-        genre: genres[Math.floor(Math.random() * genres.length)]
-    });
-}
-
-let currentAudioGenre = 'all';
-function renderAudio(query = '', genre = 'all') {
-    const list = document.getElementById('audio-list');
-    if (!list) return;
-    list.innerHTML = '';
-    state.mediaAssets.filter(a => a.type === 'audio').forEach(asset => {
-        const matchesQuery = asset.name.toLowerCase().includes(query.toLowerCase());
-        const matchesGenre = genre === 'all' || asset.genre === genre;
-
-        if (matchesQuery && matchesGenre) {
-            const div = document.createElement('div');
-            div.className = 'media-item';
-            div.innerHTML = `<i class="fas fa-music" style="font-size: 2rem; color: var(--accent);"></i><div style="font-size: 10px; padding: 5px;">${asset.name}</div><div style="font-size: 8px; color: var(--text-dim);">${asset.genre}</div>`;
-
-            div.onclick = () => {
-                state.mediaAssets.forEach(a => { if (a.type === 'audio' && a.element) a.element.pause(); });
-                if (asset.element) { asset.element.currentTime = 0; asset.element.play(); }
-            };
-
-            div.ondblclick = (e) => {
-                e.stopPropagation();
-                if (asset.element) asset.element.pause();
-                addAssetToTimeline(asset.id);
-            };
-            list.appendChild(div);
-        }
-    });
-}
-
-function initAudioLibrary() {
-    const genreTabs = document.querySelectorAll('.genre-tab');
-    audioStreams.forEach(stream => {
-        const asset = {
-            id: 'mock-audio-' + Math.random().toString(36).substr(2, 9),
-            name: stream.name,
-            genre: stream.genre,
-            type: 'audio',
-            url: stream.url || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-            duration: 120,
-            element: new Audio()
-        };
-        asset.element.src = asset.url;
-        asset.element.onloadedmetadata = () => asset.duration = asset.element.duration;
-        state.mediaAssets.push(asset);
-    });
-    genreTabs.forEach(tab => {
-        tab.onclick = () => {
-            genreTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            currentAudioGenre = tab.dataset.genre;
-            renderAudio(document.getElementById('search-audio').value, currentAudioGenre);
-        };
-    });
-    document.getElementById('search-audio').oninput = (e) => { renderAudio(e.target.value, currentAudioGenre); };
-    renderAudio();
-}
-initAudioLibrary();
-initVisualizer();
-
-document.getElementById('master-volume').oninput = (e) => {
-    state.masterVolume = e.target.value;
-    syncAudio();
-};
-
-document.getElementById('import-audio-btn').onclick = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'audio/*';
-    input.onchange = (e) => {
-        const file = e.target.files[0];
-        asset.element.src = asset.url;
-        asset.element.onloadedmetadata = () => {
-            asset.duration = asset.element.duration;
-            state.mediaAssets.push(asset);
-            renderAudio();
-        };
-    };
-    input.click();
-};
-
-// --- Tool Buttons ---
-document.getElementById('split-btn').onclick = () => {
-    let clip = state.timelineClips.find(c => c.id === state.selectedClipId && state.currentTime > c.startTime && state.currentTime < (c.startTime + c.duration));
-    if (!clip) clip = state.timelineClips.find(c => state.currentTime > c.startTime && state.currentTime < (c.startTime + c.duration));
-    if (clip) {
-        const splitPoint = state.currentTime - clip.startTime;
-        const newClip = { ...JSON.parse(JSON.stringify(clip)), id: 'clip-' + Math.random().toString(36).substr(2, 9), startTime: state.currentTime, duration: clip.duration - splitPoint, offset: (clip.offset || 0) + splitPoint };
-        clip.duration = splitPoint;
-        state.timelineClips.push(newClip);
-        renderTimeline();
-    }
-};
-
-document.getElementById('delete-btn').onclick = () => {
-    if (state.selectedClipId) {
-        state.timelineClips = state.timelineClips.filter(c => c.id !== state.selectedClipId);
-        selectClip(null);
-        updateDuration(); renderTimeline(); renderPreview(); syncAudio();
-    }
-};
-
-zoomInput.oninput = () => { state.zoomLevel = zoomInput.value * 100; renderTimeline(); updateTimestamp(); };
-document.getElementById('zoom-in-btn').onclick = () => { zoomInput.value = parseFloat(zoomInput.value) + 0.1; zoomInput.oninput(); };
-document.getElementById('zoom-out-btn').onclick = () => { zoomInput.value = parseFloat(zoomInput.value) - 0.1; zoomInput.oninput(); };
-
-// --- Help Modal ---
-const helpBtn = document.getElementById('help-btn');
-const helpModal = document.getElementById('help-modal');
-const closeHelp = document.getElementById('close-help');
-helpBtn.onclick = () => helpModal.style.display = 'flex';
-closeHelp.onclick = () => helpModal.style.display = 'none';
-window.onclick = (e) => { if (e.target === helpModal) helpModal.style.display = 'none'; };
-
-// --- Export ---
-document.getElementById('export-btn').onclick = () => {
-    const originalTime = state.currentTime;
-    const stream = canvas.captureStream(30);
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-    const chunks = [];
-    recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'futuristic-filmora-export.webm'; a.click();
-        state.currentTime = originalTime; renderPreview();
-    };
-    state.currentTime = 0;
-    recorder.start();
-    const frame = () => {
-        if (state.currentTime >= state.duration) { recorder.stop(); return; }
-        renderPreview(); state.currentTime += 1/30; requestAnimationFrame(frame);
-    };
-    frame();
-};
-
-console.log("WonderClone Futuristic Loaded");
-requestAnimationFrame(playback);
-
-
-// --- Real AI Agent Implementation ---
-const OPENAI_API_KEY = 'sk_7UIiW9Ejo61nDlI4zHFYLlLBxgFijoKU';
-
-var AIAgent = {
-    chatHistory: document.getElementById('ai-chat-history'),
-    input: document.getElementById('ai-command-input'),
-    panel: document.getElementById('ai-panel'),
-    trigger: document.getElementById('ai-trigger'),
 
     init() {
-        if (!this.trigger) return;
-        this.trigger.onclick = () => this.togglePanel();
-        const closeBtn = document.getElementById('close-ai');
-        if (closeBtn) closeBtn.onclick = () => this.togglePanel();
-        const sendBtn = document.getElementById('send-ai-btn');
-        if (sendBtn) sendBtn.onclick = () => this.handleInput();
-        if (this.input) this.input.onkeypress = (e) => { if (e.key === 'Enter') this.handleInput(); };
-    },
-
-    togglePanel() {
-        const isHidden = this.panel.style.display === 'none';
-        this.panel.style.display = isHidden ? 'flex' : 'none';
-        if (isHidden && this.input) this.input.focus();
-    },
-
-    addMessage(text, type) {
-        const msg = document.createElement('div');
-        msg.className = `ai-msg ${type}`;
-        msg.innerText = text;
-        this.chatHistory.appendChild(msg);
-        this.chatHistory.scrollTop = this.chatHistory.scrollHeight;
-    },
-
-    async handleInput() {
-        const cmd = this.input.value.trim();
-        if (!cmd) return;
-        this.addMessage(cmd, 'user');
-        this.input.value = '';
-        await this.processCommand(cmd);
-    },
-
-    async processCommand(userPrompt) {
-        this.addMessage("Neural AI is thinking...", 'bot');
-
         try {
-            const systemPrompt = `You are an AI video editing expert. You control a web-based video editor.
-            The current state has mediaAssets and timelineClips.
-            Available assets: ${JSON.stringify(state.mediaAssets.map(a => ({id: a.id, name: a.name, type: a.type}))) }
-
-            Return a JSON array of actions to execute. Available actions:
-            - {"action": "addClip", "assetId": "id", "startTime": seconds, "trackId": "video-1"|"video-2"|"audio"}
-            - {"action": "setText", "text": "string", "startTime": seconds, "duration": seconds}
-            - {"action": "split", "time": seconds}
-            - {"action": "setFilter", "clipId": "id", "filter": "brightness"|"contrast"|"blur", "value": number}
-            - {"action": "setAspectRatio", "ratio": "16/9"|"9/16"|"1/1"}
-
-            Only return the JSON array, no other text.`;
-
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "gpt-3.5-turbo",
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        { role: "user", content: userPrompt }
-                    ]
-                })
-            });
-
-            const data = await response.json();
-            const content = data.choices[0].message.content;
-            const actions = JSON.parse(content);
-
-            this.executeActions(actions);
-            this.addMessage("Neural transformations applied successfully.", 'bot');
-        } catch (error) {
-            console.error("AI Error:", error);
-            this.addMessage("Neural link disrupted. Attempting fallback...", 'bot');
-            // Fallback to keyword-based if API fails or returns non-JSON
-            this.fallbackProcess(userPrompt.toLowerCase());
-        }
-    },
-
-    executeActions(actions) {
-        actions.forEach(act => {
-            switch(act.action) {
-                case 'addClip':
-                    addAssetToTimeline(act.assetId, null, act.startTime, act.trackId);
-                    break;
-                case 'setText':
-                    this.mockGenerateCaptions(act.text, act.startTime, act.duration);
-                    break;
-                case 'setAspectRatio':
-                    state.aspectRatio = act.ratio;
-                    if (aspectRatioSelect) aspectRatioSelect.value = act.ratio;
-                    // Trigger resize logic
-                    const [w, h] = act.ratio.split('/').map(Number);
-                    if (previewContainer) previewContainer.style.aspectRatio = act.ratio;
-                    if (w / h >= 16 / 9) {
-                        canvas.width = 1280;
-                        canvas.height = 1280 / (w / h);
-                    } else {
-                        canvas.height = 720;
-                        canvas.width = 720 * (w / h);
-                    }
-                    renderPreview();
-                    break;
-                case 'setFilter':
-                    const clip = state.timelineClips.find(c => c.id === act.clipId) || state.timelineClips[0];
-                    if (clip && clip.filters) {
-                        clip.filters[act.filter] = act.value;
-                        renderPreview();
-                    }
-                    break;
-            }
-        });
-    },
-
-    mockGenerateCaptions(text, startTime, duration) {
-        const clip = {
-            id: 'clip-' + Math.random().toString(36).substr(2, 9),
-            assetId: null,
-            type: 'text',
-            track: 'video',
-            trackId: 'video-2',
-            startTime: startTime || state.currentTime,
-            duration: duration || 3,
-            offset: 0,
-            filters: { brightness: 100, contrast: 100, grayscale: 0, sepia: 0, blur: 0 },
-            volume: 100,
-            text: text,
-            fontSize: 40,
-            color: '#ffffff',
-            mode: 'plain',
-            animation: 'fade',
-            x: 640,
-            y: 600,
-            scale: 1
-        };
-        state.timelineClips.push(clip);
-        updateDuration();
-        renderTimeline();
-        renderPreview();
-    },
-
-    fallbackProcess(cmd) {
-        if (cmd.includes('cut') || cmd.includes('filler')) {
-            // ... existing fallback logic
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+        } catch (e) {
+            console.warn("Web Audio API not supported", e);
         }
     }
-};
 
-AIAgent.init();
+    resumeCtx() {
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
 
-// Adobe Reader Text Overlay Logic
-if (adobeTextEditor) {
-    adobeTextEditor.oninput = (e) => {
-        let clip = state.timelineClips.find(c => c.id === state.selectedClipId);
-        if (!clip || clip.type !== 'text') {
-            clip = state.timelineClips.find(c => c.type === 'text' && state.currentTime >= c.startTime && state.currentTime < (c.startTime + c.duration));
-            if (clip) selectClip(clip.id);
-            else {
-                AIAgent.mockGenerateCaptions("New Title", state.currentTime, 3);
-                clip = state.timelineClips[state.timelineClips.length - 1];
-                selectClip(clip.id);
-            }
+    playEngine() {
+        if (!gameState.soundEnabled || !this.ctx) return;
+        if (this.engineOsc) return;
+
+        this.engineOsc = this.ctx.createOscillator();
+        this.engineGain = this.ctx.createGain();
+
+        this.engineOsc.type = 'sawtooth';
+        this.engineOsc.frequency.setValueAtTime(60, this.ctx.currentTime);
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(300, this.ctx.currentTime);
+
+        this.engineOsc.connect(filter);
+        filter.connect(this.engineGain);
+        this.engineGain.connect(this.ctx.destination);
+
+        this.engineGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        this.engineOsc.start();
+    }
+
+    updateEnginePitch(speed) {
+        if (this.engineOsc && this.ctx) {
+            const pitch = 50 + Math.min(speed * 2.5, 300);
+            this.engineOsc.frequency.setTargetAtTime(pitch, this.ctx.currentTime, 0.1);
         }
-        if (clip && clip.type === 'text') {
-            clip.text = e.target.value;
-            renderPreview();
-            renderTimeline();
+    }
+
+    stopEngine() {
+        if (this.engineOsc) {
+            try { this.engineOsc.stop(); } catch(e){}
+            this.engineOsc = null;
         }
-    };
+    }
+
+    playImpact() {
+        if (!gameState.soundEnabled || !this.ctx) return;
+        this.resumeCtx();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.2);
+
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.2);
+    }
+
+    playPickup() {
+        if (!gameState.soundEnabled || !this.ctx) return;
+        this.resumeCtx();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, this.ctx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, this.ctx.currentTime + 0.08); // E5
+        osc.frequency.setValueAtTime(783.99, this.ctx.currentTime + 0.16); // G5
+
+        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.3);
+    }
+
+    playExplosion() {
+        if (!gameState.soundEnabled || !this.ctx) return;
+        this.resumeCtx();
+        const bufferSize = this.ctx.sampleRate * 0.5;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.5);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        noise.start();
+    }
 }
 
-// Gap Double Click
-[videoTrack1, videoTrack2, audioTrack].forEach(track => {
-    if (!track) return;
-    track.ondblclick = (e) => {
-        if (e.target !== track) return;
-        const rect = track.getBoundingClientRect();
-        const x = e.clientX - rect.left + timeline.parentElement.scrollLeft;
-        const time = x / state.zoomLevel;
-        const isGap = !state.timelineClips.some(c => c.trackId === track.id && time >= c.startTime && time < (c.startTime + c.duration));
-        if (isGap && state.mediaAssets.length > 0) {
-            const asset = state.mediaAssets[Math.floor(Math.random() * state.mediaAssets.length)];
-            addAssetToTimeline(asset.id, null, time, track.id);
-            AIAgent.addMessage("Gap detected. AI generated next scene.", 'bot');
-        }
-    };
-});
+const soundManager = new SoundManager();
 
-AIAgent.generatePlaceholderAsset = function(description) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1280;
-    canvas.height = 720;
-    const ctx = canvas.getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 1280, 720);
-    gradient.addColorStop(0, '#' + Math.floor(Math.random()*16777215).toString(16));
-    gradient.addColorStop(1, '#' + Math.floor(Math.random()*16777215).toString(16));
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 1280, 720);
-    ctx.fillStyle = '#fff';
-    ctx.font = '50px Orbitron';
-    ctx.textAlign = 'center';
-    ctx.fillText("AI GENERATED: " + description, 640, 360);
+// 3D Engine Variables
+let scene, camera, renderer;
+let playerVehicle, playerBody;
+let enemies = [];
+let ringCheckpoints = [];
+let powerups = [];
+let activeParticles = [];
 
-    const asset = {
-        id: 'ai-gen-' + Math.random().toString(36).substr(2, 9),
-        name: description,
-        type: 'image',
-        url: canvas.toDataURL(),
-        duration: 5,
-        element: new Image()
-    };
-    asset.element.src = asset.url;
-    state.mediaAssets.push(asset);
-    createMediaItem({name: asset.name, type: 'image/png'}, asset);
-    return asset.id;
+// Physics & Input State
+const inputKeys = {
+    w: false, s: false, a: false, d: false,
+    space: false, shift: false, f: false
 };
 
-// Update AIAgent.executeActions to handle generation
-const originalExecute = AIAgent.executeActions;
-AIAgent.executeActions = function(actions) {
-    actions.forEach(act => {
-        if (act.action === 'generateAsset') {
-            const assetId = this.generatePlaceholderAsset(act.description);
-            addAssetToTimeline(assetId, null, act.startTime || state.currentTime, act.trackId || 'video-1');
+let isFlyingMode = false;
+let playerHealth = 100;
+let maxPlayerHealth = 100;
+let playerNitro = 100;
+let playerVelocity = new THREE.Vector3();
+let playerSpeed = 0;
+let cameraMode = 0; // 0: Chase, 1: Close, 2: Top Down
+
+// Saved Storage Loader
+function loadSavedData() {
+    const saved = localStorage.getItem('race_survival_data');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            gameState.coins = parsed.coins || 1000;
+            gameState.unlockedCars = parsed.unlockedCars || gameState.unlockedCars;
+            gameState.carUpgrades = parsed.carUpgrades || gameState.carUpgrades;
+            gameState.carPaints = parsed.carPaints || gameState.carPaints;
+        } catch(e) {
+            console.warn("Failed to load save data", e);
+        }
+    }
+}
+
+function saveData() {
+    localStorage.setItem('race_survival_data', JSON.stringify({
+        coins: gameState.coins,
+        unlockedCars: gameState.unlockedCars,
+        carUpgrades: gameState.carUpgrades,
+        carPaints: gameState.carPaints
+    }));
+}
+
+// THREE.js Scene Setup & Initialization
+function initThreeScene() {
+    const canvas = document.getElementById('game-canvas');
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0b10);
+    scene.fog = new THREE.FogExp2(0x0a0b10, 0.003);
+
+    camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 10, 20);
+
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Lighting Setup
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0x00f3ff, 1.2);
+    dirLight.position.set(100, 150, 50);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 500;
+    const d = 150;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    scene.add(dirLight);
+
+    const secondaryLight = new THREE.DirectionalLight(0xff007f, 0.8);
+    secondaryLight.position.set(-100, 80, -50);
+    scene.add(secondaryLight);
+
+    buildEnvironment();
+
+    window.addEventListener('resize', onWindowResize, false);
+}
+
+// Arena Platform, Skybox, Ramps & City Grid
+function buildEnvironment() {
+    // Cyber Grid Ground Platform
+    const arenaSize = 300;
+    const arenaGeo = new THREE.BoxGeometry(arenaSize, 10, arenaSize);
+
+    // Grid Texture Generator
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0f1322';
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.strokeStyle = '#00f3ff';
+    ctx.lineWidth = 4;
+    for (let i = 0; i <= 512; i += 32) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0); ctx.lineTo(i, 512);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i); ctx.lineTo(512, i);
+        ctx.stroke();
+    }
+
+    const gridTexture = new THREE.CanvasTexture(canvas);
+    gridTexture.wrapS = THREE.RepeatWrapping;
+    gridTexture.wrapT = THREE.RepeatWrapping;
+    gridTexture.repeat.set(15, 15);
+
+    const arenaMat = new THREE.MeshStandardMaterial({
+        map: gridTexture,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+
+    const arenaMesh = new THREE.Mesh(arenaGeo, arenaMat);
+    arenaMesh.position.set(0, -5, 0);
+    arenaMesh.receiveShadow = true;
+    scene.add(arenaMesh);
+
+    // Glowing Arena Border Rails
+    const borderGeo = new THREE.BoxGeometry(arenaSize, 4, 4);
+    const borderMat = new THREE.MeshBasicMaterial({ color: 0xff007f });
+
+    const b1 = new THREE.Mesh(borderGeo, borderMat);
+    b1.position.set(0, 2, -arenaSize/2);
+    scene.add(b1);
+
+    const b2 = new THREE.Mesh(borderGeo, borderMat);
+    b2.position.set(0, 2, arenaSize/2);
+    scene.add(b2);
+
+    const b3 = new THREE.Mesh(borderGeo, borderMat);
+    b3.rotation.y = Math.PI / 2;
+    b3.position.set(-arenaSize/2, 2, 0);
+    scene.add(b3);
+
+    const b4 = new THREE.Mesh(borderGeo, borderMat);
+    b4.rotation.y = Math.PI / 2;
+    b4.position.set(arenaSize/2, 2, 0);
+    scene.add(b4);
+
+    // Lava Hazard Ocean Below
+    const lavaGeo = new THREE.PlaneGeometry(1500, 1500);
+    const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff2200, side: THREE.DoubleSide });
+    const lavaMesh = new THREE.Mesh(lavaGeo, lavaMat);
+    lavaMesh.rotation.x = -Math.PI / 2;
+    lavaMesh.position.y = -35;
+    scene.add(lavaMesh);
+
+    // Jump Ramps
+    createRamp(-60, 0, 40, 0);
+    createRamp(60, 0, 40, Math.PI);
+    createRamp(0, -60, 40, Math.PI / 2);
+    createRamp(0, 60, 40, -Math.PI / 2);
+
+    // Distant Futuristic Megacity Skyscrapers
+    createCityScenery();
+}
+
+function createRamp(x, z, size, rotationY) {
+    const rampGroup = new THREE.Group();
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(20, 8);
+    shape.lineTo(20, 0);
+    shape.closePath();
+
+    const extrudeSettings = { depth: 16, bevelEnabled: false };
+    const rampGeo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0x00f3ff, roughness: 0.4, metalness: 0.7 });
+    const rampMesh = new THREE.Mesh(rampGeo, rampMat);
+    rampMesh.castShadow = true;
+    rampMesh.receiveShadow = true;
+    rampGroup.add(rampMesh);
+
+    rampGroup.position.set(x, 0, z);
+    rampGroup.rotation.y = rotationY;
+    scene.add(rampGroup);
+}
+
+function createCityScenery() {
+    const cityGroup = new THREE.Group();
+    const buildingColors = [0x101420, 0x181e30, 0x0c0f18];
+    const neonColors = [0x00f3ff, 0xff007f, 0xffe600];
+
+    for (let i = 0; i < 40; i++) {
+        const radius = 250 + Math.random() * 200;
+        const angle = Math.random() * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+
+        const width = 20 + Math.random() * 30;
+        const depth = 20 + Math.random() * 30;
+        const height = 80 + Math.random() * 180;
+
+        const geo = new THREE.BoxGeometry(width, height, depth);
+        const mat = new THREE.MeshStandardMaterial({
+            color: buildingColors[Math.floor(Math.random() * buildingColors.length)],
+            roughness: 0.2
+        });
+
+        const building = new THREE.Mesh(geo, mat);
+        building.position.set(x, height / 2 - 40, z);
+        cityGroup.add(building);
+
+        // Neon Strips on Buildings
+        const stripGeo = new THREE.BoxGeometry(width + 0.5, 2, depth + 0.5);
+        const stripMat = new THREE.MeshBasicMaterial({
+            color: neonColors[Math.floor(Math.random() * neonColors.length)]
+        });
+        const strip = new THREE.Mesh(stripGeo, stripMat);
+        strip.position.set(x, height - 35, z);
+        cityGroup.add(strip);
+    }
+    scene.add(cityGroup);
+}
+
+// Construct Procedural 3D Flying Vehicle Mesh
+function createVehicleMesh(carConfig) {
+    const vehicleGroup = new THREE.Group();
+
+    // Main Chassis Body
+    const bodyGeo = new THREE.BoxGeometry(2.4, 0.9, 4.8);
+    const bodyMat = new THREE.MeshStandardMaterial({
+        color: carConfig.color,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+    bodyMesh.position.y = 0.8;
+    bodyMesh.castShadow = true;
+    vehicleGroup.add(bodyMesh);
+
+    // Cabin Cockpit Glass
+    const cabinGeo = new THREE.BoxGeometry(1.8, 0.7, 2.2);
+    const cabinMat = new THREE.MeshStandardMaterial({
+        color: 0x111122,
+        metalness: 0.9,
+        roughness: 0.1,
+        transparent: true,
+        opacity: 0.85
+    });
+    const cabinMesh = new THREE.Mesh(cabinGeo, cabinMat);
+    cabinMesh.position.set(0, 1.4, -0.2);
+    vehicleGroup.add(cabinMesh);
+
+    // Foldable Wing Extensions (Flight Mode)
+    const leftWingGroup = new THREE.Group();
+    const wingGeo = new THREE.BoxGeometry(2.5, 0.1, 1.2);
+    const wingMat = new THREE.MeshStandardMaterial({ color: carConfig.color, metalness: 0.9 });
+    const leftWing = new THREE.Mesh(wingGeo, wingMat);
+    leftWing.position.set(-1.25, 0, 0);
+    leftWingGroup.add(leftWing);
+    leftWingGroup.position.set(-1.2, 0.8, 0);
+    vehicleGroup.add(leftWingGroup);
+
+    const rightWingGroup = new THREE.Group();
+    const rightWing = new THREE.Mesh(wingGeo, wingMat);
+    rightWing.position.set(1.25, 0, 0);
+    rightWingGroup.add(rightWing);
+    rightWingGroup.position.set(1.2, 0.8, 0);
+    vehicleGroup.add(rightWingGroup);
+
+    // Jet Thruster Engines (Rear)
+    const jetGeo = new THREE.CylinderGeometry(0.35, 0.45, 1.0, 16);
+    const jetMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9 });
+
+    const leftJet = new THREE.Mesh(jetGeo, jetMat);
+    leftJet.rotation.x = Math.PI / 2;
+    leftJet.position.set(-0.7, 0.8, 2.4);
+    vehicleGroup.add(leftJet);
+
+    const rightJet = new THREE.Mesh(jetGeo, jetMat);
+    rightJet.rotation.x = Math.PI / 2;
+    rightJet.position.set(0.7, 0.8, 2.4);
+    vehicleGroup.add(rightJet);
+
+    // Jet Thruster Glow
+    const glowGeo = new THREE.SphereGeometry(0.3, 16, 16);
+    const glowMat = new THREE.MeshBasicMaterial({ color: carConfig.accent });
+
+    const leftGlow = new THREE.Mesh(glowGeo, glowMat);
+    leftGlow.position.set(-0.7, 0.8, 2.8);
+    vehicleGroup.add(leftGlow);
+
+    const rightGlow = new THREE.Mesh(glowGeo, glowMat);
+    rightGlow.position.set(0.7, 0.8, 2.8);
+    vehicleGroup.add(rightGlow);
+
+    // Glowing Neon Rims / Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
+    const rimMat = new THREE.MeshBasicMaterial({ color: carConfig.accent });
+
+    const wheelPositions = [
+        [-1.3, 0.5, -1.5],
+        [1.3, 0.5, -1.5],
+        [-1.3, 0.5, 1.5],
+        [1.3, 0.5, 1.5]
+    ];
+
+    const wheels = [];
+    wheelPositions.forEach(pos => {
+        const wGroup = new THREE.Group();
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.rotation.z = Math.PI / 2;
+        wGroup.add(wheel);
+
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.05, 8, 16), rimMat);
+        rim.rotation.y = Math.PI / 2;
+        wGroup.add(rim);
+
+        wGroup.position.set(...pos);
+        vehicleGroup.add(wGroup);
+        wheels.push(wGroup);
+    });
+
+    vehicleGroup.userData = {
+        leftWingGroup,
+        rightWingGroup,
+        leftGlow,
+        rightGlow,
+        wheels,
+        config: carConfig
+    };
+
+    return vehicleGroup;
+}
+
+// Spawning Checkpoint Rings for Aerial Race Mode
+function spawnRingCheckpoints() {
+    ringCheckpoints.forEach(r => scene.remove(r.mesh));
+    ringCheckpoints = [];
+
+    const ringRadius = 8;
+    const ringGeo = new THREE.TorusGeometry(ringRadius, 0.6, 16, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffe600 });
+
+    const positions = [
+        { x: 0, y: 15, z: -80 },
+        { x: 50, y: 35, z: -140 },
+        { x: 100, y: 55, z: -60 },
+        { x: 80, y: 40, z: 50 },
+        { x: 0, y: 25, z: 120 },
+        { x: -90, y: 45, z: 80 },
+        { x: -110, y: 60, z: -40 },
+        { x: -50, y: 30, z: -100 }
+    ];
+
+    positions.forEach((pos, idx) => {
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(pos.x, pos.y, pos.z);
+        ringMesh.rotation.y = Math.atan2(pos.x, pos.z);
+        scene.add(ringMesh);
+
+        ringCheckpoints.push({
+            mesh: ringMesh,
+            position: new THREE.Vector3(pos.x, pos.y, pos.z),
+            index: idx,
+            passed: false
+        });
+    });
+
+    gameState.totalRings = ringCheckpoints.length;
+    gameState.checkpointsPassed = 0;
+}
+
+// Spawn AI Opponents for Survival Mode
+function spawnEnemies(count) {
+    enemies.forEach(e => scene.remove(e.mesh));
+    enemies = [];
+
+    for (let i = 0; i < count; i++) {
+        const carIndex = Math.floor(Math.random() * CAR_DATABASE.length);
+        const config = { ...CAR_DATABASE[carIndex] };
+        config.color = Math.random() * 0xffffff;
+
+        const mesh = createVehicleMesh(config);
+        const angle = (i / count) * Math.PI * 2;
+        const dist = 60 + Math.random() * 40;
+        mesh.position.set(Math.cos(angle) * dist, 2, Math.sin(angle) * dist);
+
+        scene.add(mesh);
+
+        enemies.push({
+            mesh: mesh,
+            health: 80 + gameState.wave * 20,
+            maxHealth: 80 + gameState.wave * 20,
+            speed: 30 + Math.random() * 20,
+            velocity: new THREE.Vector3(),
+            isFlying: false,
+            targetPos: new THREE.Vector3()
+        });
+    }
+}
+
+// Particle System Effects (Explosions, Boost, Sparks)
+function createParticleExplosion(pos, color = 0xff0055) {
+    const count = 30;
+    const geo = new THREE.BufferGeometry();
+    const positions = [];
+    const velocities = [];
+
+    for (let i = 0; i < count; i++) {
+        positions.push(pos.x, pos.y, pos.z);
+        velocities.push(
+            (Math.random() - 0.5) * 20,
+            Math.random() * 15 + 5,
+            (Math.random() - 0.5) * 20
+        );
+    }
+
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({ color: color, size: 0.8, transparent: true, opacity: 1 });
+    const pSystem = new THREE.Points(geo, mat);
+    pSystem.userData = { velocities: velocities, life: 1.0 };
+
+    scene.add(pSystem);
+    activeParticles.push(pSystem);
+}
+
+function updateParticles(delta) {
+    for (let i = activeParticles.length - 1; i >= 0; i--) {
+        const pSystem = activeParticles[i];
+        const life = pSystem.userData.life - delta * 2;
+        pSystem.userData.life = life;
+
+        if (life <= 0) {
+            scene.remove(pSystem);
+            activeParticles.splice(i, 1);
+            continue;
+        }
+
+        pSystem.material.opacity = life;
+        const positions = pSystem.geometry.attributes.position.array;
+        const vels = pSystem.userData.velocities;
+
+        for (let j = 0; j < vels.length / 3; j++) {
+            positions[j * 3] += vels[j * 3] * delta;
+            positions[j * 3 + 1] += vels[j * 3 + 1] * delta;
+            positions[j * 3 + 2] += vels[j * 3 + 2] * delta;
+            vels[j * 3 + 1] -= 9.8 * delta; // Gravity
+        }
+        pSystem.geometry.attributes.position.needsUpdate = true;
+    }
+}
+
+// Input Event Handlers
+function setupInputs() {
+    window.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if (k === 'w' || e.key === 'ArrowUp') inputKeys.w = true;
+        if (k === 's' || e.key === 'ArrowDown') inputKeys.s = true;
+        if (k === 'a' || e.key === 'ArrowLeft') inputKeys.a = true;
+        if (k === 'd' || e.key === 'ArrowRight') inputKeys.d = true;
+        if (e.key === ' ') inputKeys.space = true;
+        if (e.key === 'Shift') inputKeys.shift = true;
+        if (k === 'f' || k === 'e') {
+            toggleFlightMode();
+        }
+        if (k === 'c') {
+            cameraMode = (cameraMode + 1) % 3;
+        }
+        if (k === 'r') {
+            resetPlayerPosition();
+        }
+        if (e.key === 'Escape' || k === 'p') {
+            togglePauseGame();
         }
     });
-    originalExecute.call(this, actions);
-};
+
+    window.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        if (k === 'w' || e.key === 'ArrowUp') inputKeys.w = false;
+        if (k === 's' || e.key === 'ArrowDown') inputKeys.s = false;
+        if (k === 'a' || e.key === 'ArrowLeft') inputKeys.a = false;
+        if (k === 'd' || e.key === 'ArrowRight') inputKeys.d = false;
+        if (e.key === ' ') inputKeys.space = false;
+        if (e.key === 'Shift') inputKeys.shift = false;
+    });
+
+    // Touch Button Controls
+    setupTouchControls();
+}
+
+function setupTouchControls() {
+    const bindTouch = (id, key) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); inputKeys[key] = true; });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); inputKeys[key] = false; });
+    };
+
+    bindTouch('btn-left', 'a');
+    bindTouch('btn-right', 'd');
+    bindTouch('btn-accel', 'w');
+    bindTouch('btn-brake', 's');
+    bindTouch('btn-boost', 'shift');
+
+    const flyBtn = document.getElementById('btn-fly');
+    if (flyBtn) {
+        flyBtn.addEventListener('touchstart', (e) => { e.preventDefault(); toggleFlightMode(); });
+    }
+}
+
+function toggleFlightMode() {
+    isFlyingMode = !isFlyingMode;
+    const indicator = document.getElementById('flight-indicator');
+    if (indicator) {
+        if (isFlyingMode) {
+            indicator.className = 'flight-status-badge flying';
+            indicator.innerHTML = '<i class="fas fa-plane"></i> FLIGHT MODE';
+        } else {
+            indicator.className = 'flight-status-badge';
+            indicator.innerHTML = '<i class="fas fa-car"></i> GROUND MODE';
+        }
+    }
+}
+
+function resetPlayerPosition() {
+    if (playerVehicle) {
+        playerVehicle.position.set(0, 5, 0);
+        playerVehicle.rotation.set(0, 0, 0);
+        playerVelocity.set(0, 0, 0);
+        playerSpeed = 0;
+    }
+}
+
+// Vehicle Physics Update Loop
+function updatePlayerPhysics(delta) {
+    if (!playerVehicle) return;
+
+    const carData = CAR_DATABASE[gameState.selectedCarIndex];
+    const upgrades = gameState.carUpgrades[gameState.selectedCarIndex];
+
+    const maxSpeed = (carData.baseSpeed + upgrades.speed * 10) * (inputKeys.shift && playerNitro > 0 ? 1.6 : 1.0);
+    const accelRate = 40 + upgrades.speed * 5;
+    const turnSpeed = 2.2;
+
+    // Wing Animation Interpolation
+    const leftWing = playerVehicle.userData.leftWingGroup;
+    const rightWing = playerVehicle.userData.rightWingGroup;
+    const targetWingAngle = isFlyingMode ? Math.PI / 2 : 0;
+
+    leftWing.rotation.z = THREE.MathUtils.lerp(leftWing.rotation.z, -targetWingAngle, delta * 5);
+    rightWing.rotation.z = THREE.MathUtils.lerp(rightWing.rotation.z, targetWingAngle, delta * 5);
+
+    // Nitro consumption
+    if (inputKeys.shift && playerNitro > 0 && (inputKeys.w || isFlyingMode)) {
+        playerNitro = Math.max(0, playerNitro - delta * 30);
+    } else if (playerNitro < 100) {
+        playerNitro = Math.min(100, playerNitro + delta * 15);
+    }
+
+    if (isFlyingMode) {
+        // --- FLIGHT DYNAMICS ---
+        if (inputKeys.w) playerSpeed = THREE.MathUtils.lerp(playerSpeed, maxSpeed, delta * 2);
+        else playerSpeed = THREE.MathUtils.lerp(playerSpeed, 20, delta);
+
+        if (inputKeys.a) playerVehicle.rotation.y += turnSpeed * delta;
+        if (inputKeys.d) playerVehicle.rotation.y -= turnSpeed * delta;
+
+        // Pitch Flight Control
+        if (inputKeys.space) {
+            playerVehicle.position.y += (25 + upgrades.flight * 3) * delta;
+        } else {
+            // Slight downward gravity float
+            playerVehicle.position.y -= 4 * delta;
+        }
+
+        // Keep vehicle above ground
+        if (playerVehicle.position.y < 2) {
+            playerVehicle.position.y = 2;
+        }
+
+        // Apply Flight Forward Vector
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerVehicle.quaternion);
+        playerVehicle.position.addScaledVector(forward, playerSpeed * delta);
+
+    } else {
+        // --- GROUND DRIVING DYNAMICS ---
+        if (inputKeys.w) {
+            playerSpeed = Math.min(maxSpeed, playerSpeed + accelRate * delta);
+        } else if (inputKeys.s) {
+            playerSpeed = Math.max(-maxSpeed * 0.4, playerSpeed - accelRate * delta);
+        } else {
+            playerSpeed = THREE.MathUtils.lerp(playerSpeed, 0, delta * 2);
+        }
+
+        if (Math.abs(playerSpeed) > 1) {
+            const dir = playerSpeed > 0 ? 1 : -1;
+            if (inputKeys.a) playerVehicle.rotation.y += turnSpeed * dir * delta;
+            if (inputKeys.d) playerVehicle.rotation.y -= turnSpeed * dir * delta;
+        }
+
+        // Gravity check
+        if (playerVehicle.position.y > 0.5) {
+            playerVelocity.y -= 25 * delta;
+            playerVehicle.position.y += playerVelocity.y * delta;
+            if (playerVehicle.position.y <= 0.5) {
+                playerVehicle.position.y = 0.5;
+                playerVelocity.y = 0;
+            }
+        }
+
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerVehicle.quaternion);
+        playerVehicle.position.addScaledVector(forward, playerSpeed * delta);
+    }
+
+    // Sound Pitch Update
+    soundManager.updateEnginePitch(Math.abs(playerSpeed));
+
+    // Lava Void Fall Check
+    if (playerVehicle.position.y < -10) {
+        takeDamage(40);
+        createParticleExplosion(playerVehicle.position);
+        resetPlayerPosition();
+    }
+
+    // Arena Boundary Check
+    const bound = 145;
+    if (Math.abs(playerVehicle.position.x) > bound || Math.abs(playerVehicle.position.z) > bound) {
+        if (playerVehicle.position.y < 2) {
+            // Airborne over lava hazard warning
+        }
+    }
+}
+
+// AI Opponent Logic & Survival Ramming
+function updateAIPhysics(delta) {
+    enemies.forEach((enemy, index) => {
+        if (!playerVehicle) return;
+
+        const distToPlayer = enemy.mesh.position.distanceTo(playerVehicle.position);
+
+        // Steering towards player
+        const dir = new THREE.Vector3().subVectors(playerVehicle.position, enemy.mesh.position).normalize();
+        const targetAngle = Math.atan2(dir.x, dir.z) + Math.PI;
+
+        enemy.mesh.rotation.y = THREE.MathUtils.lerp(enemy.mesh.rotation.y, targetAngle, delta * 2);
+
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(enemy.mesh.quaternion);
+        enemy.mesh.position.addScaledVector(forward, enemy.speed * delta);
+
+        // Ground/Fly behavior
+        if (distToPlayer < 40 && playerVehicle.position.y > 5) {
+            enemy.mesh.position.y = THREE.MathUtils.lerp(enemy.mesh.position.y, playerVehicle.position.y, delta * 2);
+        } else if (enemy.mesh.position.y > 0.5) {
+            enemy.mesh.position.y = THREE.MathUtils.lerp(enemy.mesh.position.y, 0.5, delta * 2);
+        }
+
+        // Vehicle Ramming Collision
+        if (distToPlayer < 3.5) {
+            soundManager.playImpact();
+            takeDamage(15);
+            createParticleExplosion(playerVehicle.position, 0xffff00);
+
+            // Bounce physics force
+            playerSpeed = -playerSpeed * 0.5;
+            enemy.health -= 35;
+
+            if (enemy.health <= 0) {
+                createParticleExplosion(enemy.mesh.position, 0xff0000);
+                soundManager.playExplosion();
+                scene.remove(enemy.mesh);
+                enemies.splice(index, 1);
+
+                gameState.kills++;
+                gameState.score += 500;
+                gameState.coins += 100;
+                updateHUD();
+
+                if (enemies.length === 0 && gameState.selectedMode === 'survival') {
+                    advanceWave();
+                }
+            }
+        }
+    });
+}
+
+// Checkpoint Ring Collision in Race Mode
+function updateRingCheckpoints() {
+    if (gameState.selectedMode !== 'race' || !playerVehicle) return;
+
+    let closestDist = Infinity;
+
+    ringCheckpoints.forEach(ring => {
+        if (ring.passed) return;
+
+        const dist = playerVehicle.position.distanceTo(ring.position);
+        if (dist < closestDist) closestDist = dist;
+
+        if (dist < 10) {
+            ring.passed = true;
+            ring.mesh.material.color.setHex(0x00ff66);
+            soundManager.playPickup();
+            createParticleExplosion(ring.position, 0x00ff66);
+
+            gameState.checkpointsPassed++;
+            gameState.score += 1000;
+            gameState.coins += 50;
+            updateHUD();
+
+            if (gameState.checkpointsPassed >= gameState.totalRings) {
+                triggerGameOver(true);
+            }
+        }
+    });
+
+    const ringTracker = document.getElementById('ring-distance-tracker');
+    const ringVal = document.getElementById('ring-dist-value');
+    if (ringTracker && ringVal) {
+        if (closestDist < Infinity) {
+            ringTracker.classList.remove('hidden');
+            ringVal.textContent = Math.round(closestDist) + 'm';
+        } else {
+            ringTracker.classList.add('hidden');
+        }
+    }
+}
+
+function takeDamage(amount) {
+    playerHealth = Math.max(0, playerHealth - amount);
+    updateHUD();
+
+    if (playerHealth <= 0) {
+        soundManager.playExplosion();
+        createParticleExplosion(playerVehicle.position, 0xff0055);
+        triggerGameOver(false);
+    }
+}
+
+function advanceWave() {
+    gameState.wave++;
+    gameState.score += 2000;
+    gameState.coins += 300;
+    updateHUD();
+    spawnEnemies(3 + gameState.wave);
+}
+
+// Smooth Camera Chase Rig
+function updateCamera() {
+    if (!playerVehicle) return;
+
+    let targetOffset;
+    if (cameraMode === 0) { // Standard Chase
+        targetOffset = new THREE.Vector3(0, 6, 14);
+    } else if (cameraMode === 1) { // Close Action
+        targetOffset = new THREE.Vector3(0, 3, 8);
+    } else { // High Top Down
+        targetOffset = new THREE.Vector3(0, 35, 2);
+    }
+
+    const relativeOffset = targetOffset.applyQuaternion(playerVehicle.quaternion);
+    const cameraTarget = playerVehicle.position.clone().add(relativeOffset);
+
+    camera.position.lerp(cameraTarget, 0.1);
+    camera.lookAt(playerVehicle.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+}
+
+// Render Minimap Radar Overlay
+function updateMinimap() {
+    const miniCanvas = document.getElementById('minimap-canvas');
+    if (!miniCanvas || !playerVehicle) return;
+    const ctx = miniCanvas.getContext('2d');
+    const w = miniCanvas.width;
+    const h = miniCanvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(10, 11, 16, 0.8)';
+    ctx.fillRect(0, 0, w, h);
+
+    const scale = 0.4;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // Draw Radar Rings
+    ctx.strokeStyle = 'rgba(0, 243, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 55, 0, Math.PI * 2); ctx.stroke();
+
+    // Draw Player Blip
+    ctx.fillStyle = '#00f3ff';
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+    // Draw Enemies Blips
+    ctx.fillStyle = '#ff0055';
+    enemies.forEach(e => {
+        const dx = (e.mesh.position.x - playerVehicle.position.x) * scale;
+        const dz = (e.mesh.position.z - playerVehicle.position.z) * scale;
+        if (Math.abs(dx) < cx - 5 && Math.abs(dz) < cy - 5) {
+            ctx.beginPath(); ctx.arc(cx + dx, cy + dz, 4, 0, Math.PI * 2); ctx.fill();
+        }
+    });
+
+    // Draw Rings Blips
+    ctx.fillStyle = '#ffe600';
+    ringCheckpoints.forEach(r => {
+        if (r.passed) return;
+        const dx = (r.position.x - playerVehicle.position.x) * scale;
+        const dz = (r.position.z - playerVehicle.position.z) * scale;
+        if (Math.abs(dx) < cx - 5 && Math.abs(dz) < cy - 5) {
+            ctx.beginPath(); ctx.arc(cx + dx, cy + dz, 3, 0, Math.PI * 2); ctx.fill();
+        }
+    });
+}
+
+// HUD Elements Update
+function updateHUD() {
+    document.getElementById('menu-coins').textContent = gameState.coins.toLocaleString();
+    document.getElementById('garage-coins').textContent = gameState.coins.toLocaleString();
+    document.getElementById('hud-coins').textContent = gameState.coins.toLocaleString();
+    document.getElementById('hud-score').textContent = gameState.score.toString().padStart(5, '0');
+
+    // Health Fill
+    const healthPercent = Math.max(0, Math.round((playerHealth / maxPlayerHealth) * 100));
+    document.getElementById('health-value').textContent = healthPercent + '%';
+    document.getElementById('health-bar-fill').style.width = healthPercent + '%';
+
+    // Speedometer
+    const currentSpeedKm = Math.round(Math.abs(playerSpeed) * 2.5);
+    document.getElementById('speed-value').textContent = currentSpeedKm;
+    const needleDeg = -120 + Math.min(240, (currentSpeedKm / 280) * 240);
+    const needle = document.getElementById('speed-needle');
+    if (needle) needle.style.transform = `rotate(${needleDeg}deg)`;
+
+    // Altitude
+    const altMeters = playerVehicle ? Math.max(0, Math.round(playerVehicle.position.y)) : 0;
+    document.getElementById('altitude-value').textContent = altMeters + 'm';
+    document.getElementById('altitude-bar-fill').style.width = Math.min(100, (altMeters / 100) * 100) + '%';
+
+    // Nitro
+    document.getElementById('nitro-value').textContent = Math.round(playerNitro) + '%';
+    document.getElementById('nitro-bar-fill').style.width = playerNitro + '%';
+
+    // Mode Specific Secondary Counters
+    const modeLabel = document.getElementById('mode-hud-label');
+    const secLabel = document.getElementById('secondary-hud-label');
+    const primaryVal = document.getElementById('hud-primary-counter');
+    const secVal = document.getElementById('hud-secondary-counter');
+
+    if (gameState.selectedMode === 'survival') {
+        modeLabel.textContent = 'SURVIVAL WAVE';
+        secLabel.textContent = 'OPPONENTS LEFT';
+        primaryVal.textContent = 'WAVE ' + gameState.wave;
+        secVal.textContent = enemies.length;
+    } else if (gameState.selectedMode === 'race') {
+        modeLabel.textContent = 'CHECKPOINTS';
+        secLabel.textContent = 'RACE MODE';
+        primaryVal.textContent = gameState.checkpointsPassed + ' / ' + gameState.totalRings;
+        secVal.textContent = 'AERIAL';
+    } else {
+        modeLabel.textContent = 'FREE FLY';
+        secLabel.textContent = 'STUNT ARENA';
+        primaryVal.textContent = 'INFINITE';
+        secVal.textContent = 'UNLIMITED';
+    }
+}
+
+// Game Loop & Clock Delta
+let clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = Math.min(clock.getDelta(), 0.1);
+
+    if (!gameState.isPaused && !gameState.isGameOver) {
+        updatePlayerPhysics(delta);
+        updateAIPhysics(delta);
+        updateRingCheckpoints();
+        updateParticles(delta);
+        updateCamera();
+        updateMinimap();
+    }
+
+    renderer.render(scene, camera);
+}
+
+// Window Resize Responsive
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Game Screen & Mode Controller Functions
+function startGame() {
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('garage-screen').classList.add('hidden');
+    document.getElementById('game-hud').classList.remove('hidden');
+
+    gameState.isGameOver = false;
+    gameState.isPaused = false;
+    gameState.score = 0;
+    gameState.wave = 1;
+    gameState.kills = 0;
+    gameState.checkpointsPassed = 0;
+
+    const carData = CAR_DATABASE[gameState.selectedCarIndex];
+    const upgrades = gameState.carUpgrades[gameState.selectedCarIndex];
+    maxPlayerHealth = carData.baseArmor + upgrades.armor * 20;
+    playerHealth = maxPlayerHealth;
+    playerNitro = 100;
+
+    // Spawn Selected Player Vehicle
+    if (playerVehicle) scene.remove(playerVehicle);
+    playerVehicle = createVehicleMesh(carData);
+    playerVehicle.position.set(0, 1, 0);
+    scene.add(playerVehicle);
+
+    soundManager.playEngine();
+
+    if (gameState.selectedMode === 'survival') {
+        spawnEnemies(4);
+    } else if (gameState.selectedMode === 'race') {
+        enemies.forEach(e => scene.remove(e.mesh));
+        enemies = [];
+        spawnRingCheckpoints();
+    } else {
+        enemies.forEach(e => scene.remove(e.mesh));
+        enemies = [];
+        ringCheckpoints.forEach(r => scene.remove(r.mesh));
+        ringCheckpoints = [];
+    }
+
+    updateHUD();
+}
+
+function triggerGameOver(isWin) {
+    gameState.isGameOver = true;
+    soundManager.stopEngine();
+
+    const overScreen = document.getElementById('game-over-screen');
+    const title = document.getElementById('result-title');
+    const subtitle = document.getElementById('result-subtitle');
+
+    overScreen.classList.remove('hidden');
+
+    if (isWin) {
+        title.className = 'result-win';
+        title.textContent = 'VICTORY!';
+        subtitle.textContent = 'You dominated the cyber arena as the ARENA KING!';
+    } else {
+        title.className = 'result-lose';
+        title.textContent = 'DEMOLISHED';
+        subtitle.textContent = 'Your vehicle hull was destroyed in combat!';
+    }
+
+    document.getElementById('res-wave').textContent = gameState.selectedMode === 'race' ? gameState.checkpointsPassed : gameState.wave;
+    document.getElementById('res-kills').textContent = gameState.kills;
+    document.getElementById('res-coins').textContent = '+' + (gameState.kills * 100 + gameState.checkpointsPassed * 50);
+    document.getElementById('res-score').textContent = gameState.score;
+
+    saveData();
+}
+
+function togglePauseGame() {
+    if (gameState.isGameOver) return;
+    gameState.isPaused = !gameState.isPaused;
+
+    const pauseScreen = document.getElementById('pause-screen');
+    if (gameState.isPaused) {
+        pauseScreen.classList.remove('hidden');
+        soundManager.stopEngine();
+    } else {
+        pauseScreen.classList.add('hidden');
+        soundManager.playEngine();
+    }
+}
+
+// Garage & Shop Logic Controller
+function updateGarageView() {
+    const car = CAR_DATABASE[gameState.selectedCarIndex];
+    const isUnlocked = gameState.unlockedCars[gameState.selectedCarIndex];
+    const upgrades = gameState.carUpgrades[gameState.selectedCarIndex];
+
+    document.getElementById('car-name').textContent = car.name;
+    const badge = document.getElementById('car-status');
+
+    if (isUnlocked) {
+        badge.textContent = 'UNLOCKED';
+        badge.className = 'car-badge';
+        document.getElementById('select-car-btn').classList.remove('hidden');
+        document.getElementById('buy-car-btn').classList.add('hidden');
+    } else {
+        badge.textContent = 'LOCKED';
+        badge.className = 'car-badge locked';
+        document.getElementById('select-car-btn').classList.add('hidden');
+        const buyBtn = document.getElementById('buy-car-btn');
+        buyBtn.classList.remove('hidden');
+        buyBtn.innerHTML = `<i class="fas fa-shopping-cart"></i> BUY FOR ${car.price} COINS`;
+    }
+
+    // Stat Fill Progress Bars
+    document.getElementById('stat-speed').style.width = (car.baseSpeed / 120 * 100 + upgrades.speed * 10) + '%';
+    document.getElementById('stat-armor').style.width = (car.baseArmor / 220 * 100 + upgrades.armor * 10) + '%';
+    document.getElementById('stat-boost').style.width = (car.baseBoost / 200 * 100 + upgrades.boost * 10) + '%';
+    document.getElementById('stat-flight').style.width = (car.baseFlight / 120 * 100 + upgrades.flight * 10) + '%';
+
+    // Show 3D preview vehicle in garage
+    if (playerVehicle) scene.remove(playerVehicle);
+    playerVehicle = createVehicleMesh(car);
+    playerVehicle.position.set(0, 1, 0);
+    scene.add(playerVehicle);
+}
+
+// UI Event Handlers & Initializers
+function setupUIEvents() {
+    // Mode Selection Cards
+    document.querySelectorAll('.mode-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            gameState.selectedMode = card.getAttribute('data-mode');
+        });
+    });
+
+    // Main Menu Navigation
+    document.getElementById('start-btn').addEventListener('click', startGame);
+
+    document.getElementById('garage-btn').addEventListener('click', () => {
+        document.getElementById('main-menu').classList.add('hidden');
+        document.getElementById('garage-screen').classList.remove('hidden');
+        updateGarageView();
+    });
+
+    document.getElementById('garage-back-btn').addEventListener('click', () => {
+        document.getElementById('garage-screen').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+    });
+
+    document.getElementById('controls-btn').addEventListener('click', () => {
+        document.getElementById('controls-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('close-controls-btn').addEventListener('click', () => {
+        document.getElementById('controls-modal').classList.add('hidden');
+    });
+
+    // Sound Toggle Button
+    document.getElementById('audio-toggle-btn').addEventListener('click', () => {
+        gameState.soundEnabled = !gameState.soundEnabled;
+        const btn = document.getElementById('audio-toggle-btn');
+        btn.innerHTML = gameState.soundEnabled ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+    });
+
+    // Garage Carousel & Actions
+    document.getElementById('prev-car-btn').addEventListener('click', () => {
+        gameState.selectedCarIndex = (gameState.selectedCarIndex - 1 + CAR_DATABASE.length) % CAR_DATABASE.length;
+        updateGarageView();
+    });
+
+    document.getElementById('next-car-btn').addEventListener('click', () => {
+        gameState.selectedCarIndex = (gameState.selectedCarIndex + 1) % CAR_DATABASE.length;
+        updateGarageView();
+    });
+
+    document.getElementById('buy-car-btn').addEventListener('click', () => {
+        const car = CAR_DATABASE[gameState.selectedCarIndex];
+        if (gameState.coins >= car.price) {
+            gameState.coins -= car.price;
+            gameState.unlockedCars[gameState.selectedCarIndex] = true;
+            saveData();
+            updateHUD();
+            updateGarageView();
+            soundManager.playPickup();
+        } else {
+            alert("Not enough coins! Win arena survival matches to earn more coins.");
+        }
+    });
+
+    document.getElementById('select-car-btn').addEventListener('click', () => {
+        document.getElementById('garage-screen').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+    });
+
+    // Stat Upgrade Buttons
+    document.querySelectorAll('.upgrade-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const stat = btn.getAttribute('data-stat');
+            const cost = 200;
+            if (gameState.coins >= cost) {
+                const upgrades = gameState.carUpgrades[gameState.selectedCarIndex];
+                if (upgrades[stat] < 5) {
+                    gameState.coins -= cost;
+                    upgrades[stat]++;
+                    saveData();
+                    updateHUD();
+                    updateGarageView();
+                    soundManager.playPickup();
+                }
+            }
+        });
+    });
+
+    // Pause & Result Modal Buttons
+    document.getElementById('pause-btn').addEventListener('click', togglePauseGame);
+    document.getElementById('resume-btn').addEventListener('click', togglePauseGame);
+    document.getElementById('restart-btn').addEventListener('click', () => {
+        togglePauseGame();
+        startGame();
+    });
+
+    document.getElementById('pause-garage-btn').addEventListener('click', () => {
+        togglePauseGame();
+        document.getElementById('game-hud').classList.add('hidden');
+        document.getElementById('garage-screen').classList.remove('hidden');
+        updateGarageView();
+    });
+
+    document.getElementById('pause-menu-btn').addEventListener('click', () => {
+        togglePauseGame();
+        document.getElementById('game-hud').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+    });
+
+    document.getElementById('play-again-btn').addEventListener('click', () => {
+        document.getElementById('game-over-screen').classList.add('hidden');
+        startGame();
+    });
+
+    document.getElementById('result-garage-btn').addEventListener('click', () => {
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('game-hud').classList.add('hidden');
+        document.getElementById('garage-screen').classList.remove('hidden');
+        updateGarageView();
+    });
+
+    document.getElementById('result-menu-btn').addEventListener('click', () => {
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('game-hud').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+    });
+}
+
+// Window OnLoad Initialization Entry Point
+window.addEventListener('load', () => {
+    loadSavedData();
+    initThreeScene();
+    setupInputs();
+    setupUIEvents();
+    updateHUD();
+
+    // Default Main Menu Preview Vehicle
+    playerVehicle = createVehicleMesh(CAR_DATABASE[0]);
+    playerVehicle.position.set(0, 1, 0);
+    scene.add(playerVehicle);
+
+    animate();
+});
