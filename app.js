@@ -174,6 +174,9 @@ let enemies = [];
 let ringCheckpoints = [];
 let powerups = [];
 let activeParticles = [];
+let floatingTiles = [];
+let shatterables = [];
+let speedBoostArches = [];
 
 // Physics & Input State
 const inputKeys = {
@@ -257,84 +260,320 @@ function initThreeScene() {
     window.addEventListener('resize', onWindowResize, false);
 }
 
-// Arena Platform, Skybox, Ramps & City Grid
+// Build Floating Sky Arena (No Land Ground Beneath - Floating Platforms over Sky Void)
 function buildEnvironment() {
-    // Cyber Grid Ground Platform
-    const arenaSize = 300;
-    const arenaGeo = new THREE.BoxGeometry(arenaSize, 10, arenaSize);
+    // Clear previous environment structures
+    floatingTiles.forEach(t => scene.remove(t.mesh));
+    floatingTiles = [];
 
-    // Grid Texture Generator
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#0f1322';
-    ctx.fillRect(0, 0, 512, 512);
-    ctx.strokeStyle = '#00f3ff';
-    ctx.lineWidth = 4;
-    for (let i = 0; i <= 512; i += 32) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0); ctx.lineTo(i, 512);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, i); ctx.lineTo(512, i);
-        ctx.stroke();
+    // Create Floating Central Grid Platforms with Collapsing Tiles
+    const tileSize = 12;
+    const gridDim = 12; // 12x12 grid of floating sky tiles
+    const halfGrid = (gridDim * tileSize) / 2;
+
+    const tileGeo = new THREE.BoxGeometry(tileSize - 0.8, 2, tileSize - 0.8);
+
+    for (let r = 0; r < gridDim; r++) {
+        for (let c = 0; c < gridDim; c++) {
+            // Leave open gaps in the grid to create sky voids
+            if ((r === 0 || r === gridDim - 1) && (c === 0 || c === gridDim - 1)) continue;
+
+            const tileMat = new THREE.MeshStandardMaterial({
+                color: (r + c) % 2 === 0 ? 0x12192c : 0x1a233d,
+                metalness: 0.8,
+                roughness: 0.2,
+                emissive: 0x00f3ff,
+                emissiveIntensity: 0.15
+            });
+
+            const tileMesh = new THREE.Mesh(tileGeo, tileMat);
+            const x = (c * tileSize) - halfGrid + tileSize / 2;
+            const z = (r * tileSize) - halfGrid + tileSize / 2;
+            tileMesh.position.set(x, 0, z);
+            tileMesh.receiveShadow = true;
+            tileMesh.castShadow = true;
+
+            // Glowing Tile Edge Frame
+            const edgeGeo = new THREE.EdgesGeometry(tileGeo);
+            const edgeMat = new THREE.LineBasicMaterial({ color: 0x00f3ff });
+            const wireframe = new THREE.LineSegments(edgeGeo, edgeMat);
+            tileMesh.add(wireframe);
+
+            scene.add(tileMesh);
+
+            floatingTiles.push({
+                mesh: tileMesh,
+                wireframe: wireframe,
+                initialY: 0,
+                stepped: false,
+                stepTimer: 0,
+                collapsed: false,
+                bounds: { minX: x - tileSize / 2, maxX: x + tileSize / 2, minZ: z - tileSize / 2, maxZ: z + tileSize / 2 }
+            });
+        }
     }
 
-    const gridTexture = new THREE.CanvasTexture(canvas);
-    gridTexture.wrapS = THREE.RepeatWrapping;
-    gridTexture.wrapT = THREE.RepeatWrapping;
-    gridTexture.repeat.set(15, 15);
+    // Secondary Higher-Tier Sky Platforms & Ramps
+    createSkyPlatform(-110, 15, -110, 60, 40);
+    createSkyPlatform(110, 20, 110, 50, 50);
+    createSkyPlatform(-110, 25, 110, 50, 50);
+    createSkyPlatform(110, 18, -110, 60, 40);
 
-    const arenaMat = new THREE.MeshStandardMaterial({
-        map: gridTexture,
-        roughness: 0.3,
-        metalness: 0.8
+    // Sky Skybridges Connecting High Islands
+    createSkyBridge(0, 12, -120, 100, 12, 0);
+    createSkyBridge(0, 12, 120, 100, 12, 0);
+
+    // Floating Jump Ramps in Sky
+    createRamp(-45, 0, 0, Math.PI / 2);
+    createRamp(45, 0, 0, -Math.PI / 2);
+    createRamp(0, 0, -45, 0);
+    createRamp(0, 0, 45, Math.PI);
+
+    // Spawn Destructible Crates & Pass-Through Boost Arches
+    spawnShatterables();
+    spawnSpeedBoostArches();
+
+    // Endless Sky Abyss Nebula Base (No Solid Ground surface below)
+    const skyVoidGeo = new THREE.RingGeometry(80, 800, 32);
+    const skyVoidMat = new THREE.MeshBasicMaterial({
+        color: 0x050814,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.95
     });
+    const skyVoidMesh = new THREE.Mesh(skyVoidGeo, skyVoidMat);
+    skyVoidMesh.rotation.x = Math.PI / 2;
+    skyVoidMesh.position.y = -80;
+    scene.add(skyVoidMesh);
 
-    const arenaMesh = new THREE.Mesh(arenaGeo, arenaMat);
-    arenaMesh.position.set(0, -5, 0);
-    arenaMesh.receiveShadow = true;
-    scene.add(arenaMesh);
-
-    // Glowing Arena Border Rails
-    const borderGeo = new THREE.BoxGeometry(arenaSize, 4, 4);
-    const borderMat = new THREE.MeshBasicMaterial({ color: 0xff007f });
-
-    const b1 = new THREE.Mesh(borderGeo, borderMat);
-    b1.position.set(0, 2, -arenaSize/2);
-    scene.add(b1);
-
-    const b2 = new THREE.Mesh(borderGeo, borderMat);
-    b2.position.set(0, 2, arenaSize/2);
-    scene.add(b2);
-
-    const b3 = new THREE.Mesh(borderGeo, borderMat);
-    b3.rotation.y = Math.PI / 2;
-    b3.position.set(-arenaSize/2, 2, 0);
-    scene.add(b3);
-
-    const b4 = new THREE.Mesh(borderGeo, borderMat);
-    b4.rotation.y = Math.PI / 2;
-    b4.position.set(arenaSize/2, 2, 0);
-    scene.add(b4);
-
-    // Lava Hazard Ocean Below
-    const lavaGeo = new THREE.PlaneGeometry(1500, 1500);
-    const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff2200, side: THREE.DoubleSide });
-    const lavaMesh = new THREE.Mesh(lavaGeo, lavaMat);
-    lavaMesh.rotation.x = -Math.PI / 2;
-    lavaMesh.position.y = -35;
-    scene.add(lavaMesh);
-
-    // Jump Ramps
-    createRamp(-60, 0, 40, 0);
-    createRamp(60, 0, 40, Math.PI);
-    createRamp(0, -60, 40, Math.PI / 2);
-    createRamp(0, 60, 40, -Math.PI / 2);
-
-    // Distant Futuristic Megacity Skyscrapers
+    // Distant Floating Megacity Skyscrapers
     createCityScenery();
+}
+
+function createSkyPlatform(x, y, z, width, depth) {
+    const geo = new THREE.BoxGeometry(width, 3, depth);
+    const mat = new THREE.MeshStandardMaterial({
+        color: 0x0c1220,
+        metalness: 0.8,
+        roughness: 0.2,
+        emissive: 0xff007f,
+        emissiveIntensity: 0.2
+    });
+    const plat = new THREE.Mesh(geo, mat);
+    plat.position.set(x, y, z);
+    plat.receiveShadow = true;
+    plat.castShadow = true;
+
+    // Glowing Neon Border Edge
+    const borderGeo = new THREE.BoxGeometry(width + 1, 0.5, depth + 1);
+    const borderMat = new THREE.MeshBasicMaterial({ color: 0xff007f });
+    const border = new THREE.Mesh(borderGeo, borderMat);
+    border.position.set(0, 1.6, 0);
+    plat.add(border);
+
+    scene.add(plat);
+
+    floatingTiles.push({
+        mesh: plat,
+        initialY: y,
+        stepped: false,
+        stepTimer: 0,
+        collapsed: false,
+        isPermanent: true, // Sky platforms don't crumble
+        bounds: { minX: x - width / 2, maxX: x + width / 2, minZ: z - depth / 2, maxZ: z + depth / 2, topY: y + 1.5 }
+    });
+}
+
+function createSkyBridge(x, y, z, length, width, rotationY) {
+    const geo = new THREE.BoxGeometry(length, 2, width);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x11192e, metalness: 0.8, roughness: 0.3 });
+    const bridge = new THREE.Mesh(geo, mat);
+    bridge.position.set(x, y, z);
+    bridge.rotation.y = rotationY;
+    bridge.receiveShadow = true;
+    bridge.castShadow = true;
+
+    scene.add(bridge);
+
+    floatingTiles.push({
+        mesh: bridge,
+        initialY: y,
+        stepped: false,
+        stepTimer: 0,
+        collapsed: false,
+        isPermanent: true,
+        bounds: { minX: x - length / 2, maxX: x + length / 2, minZ: z - width / 2, maxZ: z + width / 2, topY: y + 1 }
+    });
+}
+
+// Spawn Shatterable Interactive Crates & Pass-Through Barriers ("Drive/Go Through Things")
+function spawnShatterables() {
+    shatterables.forEach(s => scene.remove(s.mesh));
+    shatterables = [];
+
+    const crateGeo = new THREE.BoxGeometry(2.5, 2.5, 2.5);
+
+    const positions = [
+        { x: -20, y: 2, z: -20 }, { x: -18, y: 2, z: -20 }, { x: -20, y: 4.5, z: -20 },
+        { x: 20, y: 2, z: 20 }, { x: 22, y: 2, z: 20 },
+        { x: -30, y: 2, z: 30 }, { x: 30, y: 2, z: -30 },
+        { x: 0, y: 2, z: -35 }, { x: 0, y: 2, z: 35 },
+        { x: -110, y: 17, z: -110 }, { x: 110, y: 22, z: 110 }
+    ];
+
+    positions.forEach((pos, idx) => {
+        const crateMat = new THREE.MeshStandardMaterial({
+            color: idx % 2 === 0 ? 0xff0055 : 0xffe600,
+            metalness: 0.6,
+            roughness: 0.3,
+            emissive: idx % 2 === 0 ? 0xff0055 : 0xffe600,
+            emissiveIntensity: 0.3
+        });
+        const crate = new THREE.Mesh(crateGeo, crateMat);
+        crate.position.set(pos.x, pos.y, pos.z);
+        crate.castShadow = true;
+        scene.add(crate);
+
+        shatterables.push({
+            mesh: crate,
+            position: new THREE.Vector3(pos.x, pos.y, pos.z),
+            shattered: false
+        });
+    });
+}
+
+function updateShatterables(delta) {
+    if (!playerVehicle) return;
+
+    shatterables.forEach(s => {
+        if (s.shattered) return;
+
+        const dist = playerVehicle.position.distanceTo(s.position);
+        if (dist < 3.2) {
+            s.shattered = true;
+            scene.remove(s.mesh);
+
+            // Shatter Debris Particle FX
+            createParticleExplosion(s.position, 0xffe600);
+            soundManager.playImpact();
+
+            // Reward score & coins for driving through crates
+            gameState.score += 200;
+            gameState.coins += 25;
+            updateHUD();
+        }
+    });
+}
+
+// Collapsing Floating Tile Engine (Tiles fall into Sky Void when driven over)
+function updateFloatingTiles(delta) {
+    if (!playerVehicle) return;
+
+    const px = playerVehicle.position.x;
+    const pz = playerVehicle.position.z;
+    const py = playerVehicle.position.y;
+
+    floatingTiles.forEach(tile => {
+        if (tile.isPermanent) return;
+
+        // Check if player or AI is over tile
+        if (!tile.collapsed && py > tile.initialY - 2 && py < tile.initialY + 4) {
+            if (px >= tile.bounds.minX && px <= tile.bounds.maxX && pz >= tile.bounds.minZ && pz <= tile.bounds.maxZ) {
+                tile.stepped = true;
+            }
+        }
+
+        if (tile.stepped && !tile.collapsed) {
+            tile.stepTimer += delta;
+
+            // Warning flash before collapse
+            if (tile.stepTimer > 0.6) {
+                const flash = Math.sin(tile.stepTimer * 20) > 0;
+                tile.mesh.material.emissive.setHex(flash ? 0xff0055 : 0x000000);
+                if (tile.wireframe) tile.wireframe.material.color.setHex(0xff0055);
+            }
+
+            // Collapse tile into void
+            if (tile.stepTimer > 1.2) {
+                tile.collapsed = true;
+                soundManager.playImpact();
+                createParticleExplosion(tile.mesh.position, 0xff0055);
+            }
+        }
+
+        if (tile.collapsed) {
+            tile.mesh.position.y -= 45 * delta; // Fall rapidly into sky void
+            if (tile.mesh.position.y < -120) {
+                scene.remove(tile.mesh);
+            }
+        }
+    });
+}
+
+// Spawn Pass-Through Speed Boost Arches
+function spawnSpeedBoostArches() {
+    speedBoostArches.forEach(a => scene.remove(a.mesh));
+    speedBoostArches = [];
+
+    const archPositions = [
+        { x: 0, y: 3, z: -60, rot: 0 },
+        { x: 0, y: 3, z: 60, rot: 0 },
+        { x: -60, y: 3, z: 0, rot: Math.PI / 2 },
+        { x: 60, y: 3, z: 0, rot: Math.PI / 2 }
+    ];
+
+    archPositions.forEach(p => {
+        const archGroup = new THREE.Group();
+
+        // Neon Gate Frame
+        const gateGeo = new THREE.TorusGeometry(5, 0.4, 12, 24, Math.PI);
+        const gateMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+        const gate = new THREE.Mesh(gateGeo, gateMat);
+        archGroup.add(gate);
+
+        // Holographic Pass-Through Field Inside Arch
+        const fieldGeo = new THREE.CircleGeometry(4.6, 24);
+        const fieldMat = new THREE.MeshBasicMaterial({
+            color: 0x00f3ff,
+            transparent: true,
+            opacity: 0.25,
+            side: THREE.DoubleSide
+        });
+        const field = new THREE.Mesh(fieldGeo, fieldMat);
+        archGroup.add(field);
+
+        archGroup.position.set(p.x, p.y, p.z);
+        archGroup.rotation.y = p.rot;
+
+        scene.add(archGroup);
+
+        speedBoostArches.push({
+            mesh: archGroup,
+            position: new THREE.Vector3(p.x, p.y, p.z),
+            cooldown: 0
+        });
+    });
+}
+
+function updateSpeedBoostArches(delta) {
+    if (!playerVehicle) return;
+
+    speedBoostArches.forEach(arch => {
+        if (arch.cooldown > 0) {
+            arch.cooldown -= delta;
+            return;
+        }
+
+        const dist = playerVehicle.position.distanceTo(arch.position);
+        if (dist < 5.0) {
+            arch.cooldown = 1.5; // Cooldown before reactivating
+            playerSpeed += 80; // Instant boost velocity
+            playerNitro = Math.min(100, playerNitro + 40); // Restore Nitro
+            soundManager.playPickup();
+            createParticleExplosion(playerVehicle.position, 0x00f3ff);
+            updateHUD();
+        }
+    });
 }
 
 function createRamp(x, z, size, rotationY) {
@@ -773,14 +1012,38 @@ function updatePlayerPhysics(delta) {
             if (inputKeys.d) playerVehicle.rotation.y -= turnSpeed * dir * delta;
         }
 
-        // Gravity check
-        if (playerVehicle.position.y > 0.5) {
-            playerVelocity.y -= 25 * delta;
-            playerVehicle.position.y += playerVelocity.y * delta;
-            if (playerVehicle.position.y <= 0.5) {
-                playerVehicle.position.y = 0.5;
+        // Platform Ground Support & Void Physics Check
+        let currentPlatformY = null;
+        const px = playerVehicle.position.x;
+        const pz = playerVehicle.position.z;
+
+        for (const tile of floatingTiles) {
+            if (!tile.collapsed && px >= tile.bounds.minX && px <= tile.bounds.maxX && pz >= tile.bounds.minZ && pz <= tile.bounds.maxZ) {
+                const topY = tile.bounds.topY !== undefined ? tile.bounds.topY : tile.mesh.position.y + 1;
+                if (playerVehicle.position.y >= topY - 1.5) {
+                    currentPlatformY = topY;
+                    break;
+                }
+            }
+        }
+
+        if (currentPlatformY !== null) {
+            // Vehicle is supported by a floating sky platform
+            if (playerVehicle.position.y > currentPlatformY + 0.1) {
+                playerVelocity.y -= 25 * delta;
+                playerVehicle.position.y += playerVelocity.y * delta;
+                if (playerVehicle.position.y <= currentPlatformY) {
+                    playerVehicle.position.y = currentPlatformY;
+                    playerVelocity.y = 0;
+                }
+            } else {
+                playerVehicle.position.y = currentPlatformY;
                 playerVelocity.y = 0;
             }
+        } else {
+            // Open Sky Space - No land beneath! Apply freefall gravity
+            playerVelocity.y -= 35 * delta;
+            playerVehicle.position.y += playerVelocity.y * delta;
         }
 
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerVehicle.quaternion);
@@ -790,18 +1053,13 @@ function updatePlayerPhysics(delta) {
     // Sound Pitch Update
     soundManager.updateEnginePitch(Math.abs(playerSpeed));
 
-    // Lava Void Fall Check
-    if (playerVehicle.position.y < -10) {
+    // Endless Sky Void Fall Check (Explosion into Abyss)
+    if (playerVehicle.position.y < -18) {
+        createParticleExplosion(playerVehicle.position, 0xff0055);
+        soundManager.playExplosion();
         takeDamage(40);
-        createParticleExplosion(playerVehicle.position);
-        resetPlayerPosition();
-    }
-
-    // Arena Boundary Check
-    const bound = 145;
-    if (Math.abs(playerVehicle.position.x) > bound || Math.abs(playerVehicle.position.z) > bound) {
-        if (playerVehicle.position.y < 2) {
-            // Airborne over lava hazard warning
+        if (playerHealth > 0) {
+            resetPlayerPosition();
         }
     }
 }
@@ -822,11 +1080,40 @@ function updateAIPhysics(delta) {
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(enemy.mesh.quaternion);
         enemy.mesh.position.addScaledVector(forward, enemy.speed * delta);
 
-        // Ground/Fly behavior
+        // AI Platform Ground vs Sky Void Gravity
+        let aiPlatformY = null;
+        for (const tile of floatingTiles) {
+            if (!tile.collapsed && enemy.mesh.position.x >= tile.bounds.minX && enemy.mesh.position.x <= tile.bounds.maxX && enemy.mesh.position.z >= tile.bounds.minZ && enemy.mesh.position.z <= tile.bounds.maxZ) {
+                aiPlatformY = tile.bounds.topY !== undefined ? tile.bounds.topY : tile.mesh.position.y + 1;
+                break;
+            }
+        }
+
         if (distToPlayer < 40 && playerVehicle.position.y > 5) {
             enemy.mesh.position.y = THREE.MathUtils.lerp(enemy.mesh.position.y, playerVehicle.position.y, delta * 2);
-        } else if (enemy.mesh.position.y > 0.5) {
-            enemy.mesh.position.y = THREE.MathUtils.lerp(enemy.mesh.position.y, 0.5, delta * 2);
+        } else if (aiPlatformY !== null) {
+            enemy.mesh.position.y = THREE.MathUtils.lerp(enemy.mesh.position.y, aiPlatformY, delta * 5);
+        } else {
+            // No platform underneath AI - fall into sky void!
+            enemy.mesh.position.y -= 35 * delta;
+        }
+
+        // AI Sky Void Fall Destruction
+        if (enemy.mesh.position.y < -18) {
+            createParticleExplosion(enemy.mesh.position, 0xff0000);
+            soundManager.playExplosion();
+            scene.remove(enemy.mesh);
+            enemies.splice(index, 1);
+
+            gameState.kills++;
+            gameState.score += 500;
+            gameState.coins += 100;
+            updateHUD();
+
+            if (enemies.length === 0 && gameState.selectedMode === 'survival') {
+                advanceWave();
+            }
+            return;
         }
 
         // Vehicle Ramming Collision
@@ -1050,6 +1337,9 @@ function animate() {
         updatePlayerPhysics(delta);
         updateAIPhysics(delta);
         updateRingCheckpoints();
+        updateShatterables(delta);
+        updateSpeedBoostArches(delta);
+        updateFloatingTiles(delta);
         updateParticles(delta);
         updateCamera();
         updateMinimap();
